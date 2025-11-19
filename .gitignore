@@ -5,3 +5,6 @@ fort.*
 output
 eos
 .direnv
+xs*/
+*.log
+dict*

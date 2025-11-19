@@ -23,7 +23,7 @@ if [ -z "$DELPHI" ]; then
     source /cvmfs/delphi.cern.ch/setup.sh
 fi
 if [ -z "$ROOTSYS" ]; then
-    source /cvmfs/sft.cern.ch/lcg/app/releases/ROOT/6.34.04/x86_64-almalinux9.5-gcc115-opt/bin/thisroot.sh
+    source /cvmfs/sft.cern.ch/lcg/app/releases/ROOT/6.34.08/x86_64-almalinux8.10-gcc85-opt/bin/thisroot.sh
 fi
 set -x
 
@@ -33,6 +33,6 @@ BINARY_FILE="$(realpath "$SUBMIT_DIR/../build/delphi-nanoaod/delphi-nanoaod")"
 
 "$BINARY_FILE" -N "$NICKNAME" -C "$CONFIG_FILE" -O "$OUTPUT" "$OPTIONS"
 
-ls -l
+# ls -l
 
-xrdcp --force --retry 3 --cksum adler32 "$OUTPUT" "root://eosproject.cern.ch//eos/project/d/delphi/public/nanoaod/v0.2.0/$OUTPUT"
+# xrdcp --force --retry 3 --cksum adler32 "$OUTPUT" "root://eosproject.cern.ch//eos/project/d/delphi/public/nanoaod/v0.2.0/$OUTPUT"

@@ -691,19 +691,22 @@ if __name__ == '__main__':
     # response v15 -> data v3 vvv tight angular
     # response v14 -> data v1 angular (nominal)
     # response v13 -> data v2 correspondence table
-    filenamein = 'response_kk2f4146_qqpy_91.25_v16_zcov.root'
+    #filenamein = 'response_kk2f4146_qqpy_91.25_v16_zcov.root'
     #filenamein = 'response_kk2f4146_qqardcy_91.25_v1.root'
     #filenamein = 'response_pythia8_91.25_v3.root'
     #filenamein = 'response_pythia8_dire_91.25_v1.root'
+
+    filenamein = 'response_ALEPHMC_LEP1MC1994_recons_aftercut.v1.root'
 
     #filenamein = 'response_kk2f4146_qqpy_91.25_95d_v1.root'
     #filenamein = 'response_pythia8_91.25_95d_v1.root'
     #filenamein = 'response_pythia8_dire_91.25_95d_v1.root'
     
-    datafile = 'h_94c_v8_cov.root'
+    #datafile = 'h_94c_v8_cov.root'
     #datafile = 'h_95d_v1_cov.root'
+    datafile = 'h_aleph_v1.root'
     
-    filenameout = f'unfolded_data_kk2f4146_qqpy_91.25_v5{surfix}.root'
+    #filenameout = f'unfolded_data_kk2f4146_qqpy_91.25_v5{surfix}.root'
     #filenameout = f'unfolded_data_kk2f4146_qqardcy_91.25_v1{surfix}.root'
     #filenameout = f'unfolded_data_pythia8_91.25_v1{surfix}.root'
     #filenameout = f'unfolded_data_pythia8_dire_91.25_v1{surfix}.root'
@@ -711,6 +714,8 @@ if __name__ == '__main__':
     #filenameout = f'unfolded_data_95d_kk2f4146_qqpy_91.25_v1{surfix}.root'
     #filenameout = f'unfolded_data_95d_pythia8_91.25_v1{surfix}.root'
     #filenameout = f'unfolded_data_95d_pythia8_dire_91.25_v1{surfix}.root'
+
+    filenameout = f'unfolded_data_aleph_v1{surfix}.root'
     
     data2dname = f'EEC2d_{args.jacobian}'
     

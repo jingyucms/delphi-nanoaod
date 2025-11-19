@@ -175,8 +175,8 @@ def calculate_event_eec_histogram(pairs_data, temp_hist, n):
 
 if __name__ == "__main__":
 
-    filename = '/eos/user/z/zhangj/DELPHI/simulation/v94c/91.25/kk2f4146_qqpy/nanoaod_kk2f4146_qqpy_91.25_40001.sdst.root'
-    #filename = "/afs/cern.ch/user/z/zhangj/private/DELPHI/delphi-nanoaod/nanoaod_pythia8_1.root"
+    #filename = '/eos/user/z/zhangj/DELPHI/simulation/v94c/91.25/kk2f4146_qqpy/nanoaod_kk2f4146_qqpy_91.25_40001.sdst.root'
+    filename = "/eos/user/z/zhangj/ALEPH/SamplesLEP1/ALEPHMC/LEP1MC1994_recons_aftercut-001.root"
     filenameout = 'h_test_with_covariance.root'
     isGen = True
     
@@ -226,10 +226,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     treename = "t"
-    isALEPH  = False           # always defined
+    isALEPH  = True           # always defined
 
     if "ALEPH" in args.infiles:
-      isALEPH = False # True / False
+      isALEPH = True # True / False
     if isGen:
         treename = "tgenBefore" 
         treename2 = "tgen"
@@ -268,14 +268,14 @@ if __name__ == "__main__":
         t_hadrons.GetEntry(iEvt)
 
         E   = t_hadrons.Energy
-        if abs(E - 91.25) > 1: continue
+        #if abs(E - 91.25) > 1: continue
             
         get = lambda *names: (np.array(getattr(t_hadrons,n)) for n in names)
 
         if isGen:
             if isALEPH:
-                px,py,pz,m,q,th,pt,eta,phi,pwflag = get(
-                  'px','py','pz','mass','charge','theta','pt','eta','phi','pwflag')
+                px,py,pz,m,q,th,pt,eta,phi,pwflag,hp = get(
+                  'px','py','pz','mass','charge','theta','pt','eta','phi','pwflag','highPurity')
             else:
                 px,py,pz,m,q,th,pt,eta,phi,pwflag,hp = get(
                     'px','py','pz','mass','charge','theta','pt','eta','phi','pid','highPurity')
@@ -313,9 +313,9 @@ if __name__ == "__main__":
         e = np.sqrt(px**2 + py**2 + pz**2 + m**2)
         h1d["SumE_2"].Fill(np.sum(e))
 
-        if isGen and len(e)<4: continue 
+        #if isGen and len(e)<4: continue 
     
-        if isGen and abs(np.sum(e)-E) > 0.1: 
+        if isGen and abs(np.sum(e)-E) > 0.1 and not isALEPH: 
             # Energy not conserved - switch to t_hadrons2 for THIS event
             t_hadrons2.GetEntry(iEvt)
         

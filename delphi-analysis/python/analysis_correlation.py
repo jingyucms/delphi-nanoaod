@@ -142,8 +142,8 @@ def calc_weight(pt):
 
 if __name__ == "__main__":
 
-    filename = '/eos/user/z/zhangj/DELPHI/simulation/v94c/91.25/kk2f4146_qqpy/nanoaod_kk2f4146_qqpy_91.25_40001.sdst.root'
-    #filename = "/afs/cern.ch/user/z/zhangj/private/DELPHI/delphi-nanoaod/nanoaod_pythia8_1.root"
+    #filename = '/eos/user/z/zhangj/DELPHI/simulation/v94c/91.25/kk2f4146_qqpy/nanoaod_kk2f4146_qqpy_91.25_40001.sdst.root'
+    filename = "/eos/user/z/zhangj/ALEPH/SamplesLEP1/ALEPH/LEP1Data1994P1_recons_aftercut-MERGED_part071.root"
     filenameout = 'h_test_covariance.root'
     isGen = False
     doChargedThrust = False
@@ -159,7 +159,7 @@ if __name__ == "__main__":
     isALEPH  = False           # always defined
 
     if "ALEPH" in args.infiles:
-      isALEPH = False # True / False
+      isALEPH = True # True / False
     if isGen:
         treename = "tgenBefore" 
     
@@ -221,7 +221,7 @@ if __name__ == "__main__":
 
         
         E   = t_hadrons.Energy
-        if abs(E - 91.25) > 1: continue
+        #if abs(E - 91.25) > 1: continue
             
         get = lambda *names: (np.array(getattr(t_hadrons,n)) for n in names)
 
@@ -233,8 +233,11 @@ if __name__ == "__main__":
                 px,py,pz,m,q,th,pt,eta,phi,pwflag,hp = get(
                     'px','py','pz','mass','charge','theta','pt','eta','phi','pid','highPurity')
         else:
-            px,py,pz,m,q,th,pt,eta,phi,d0,z0,pwflag = get(
-                'px','py','pz','mass','charge','theta','pt','eta','phi','d0','z0','pwflag')
+            px,py,pz,m,q,th,pt,eta,phi,d0,z0,pwflag,hp = get(
+                'px','py','pz','mass','charge','theta','pt','eta','phi','d0','z0','pwflag','highPurity')
+
+        sphericity = calculate_sphericity_with_fallback(px, py, pz)
+        print(np.cos(t_hadrons.STheta), sphericity['cos_theta_v1'], E)
 
         if isGen:
             if isALEPH:
@@ -281,12 +284,12 @@ if __name__ == "__main__":
         
         # --- Track selection
         if not isGen:
-            reco_results = apply_track_selection_delphi(px=px, py=py, pz=pz, m=m, q=q, th=th, pt=pt, eta=eta, phi=phi, d0=d0, z0=z0, pwflag=pwflag)
+            reco_results = apply_track_selection_aleph(px=px, py=py, pz=pz, m=m, q=q, th=th, pt=pt, eta=eta, phi=phi, d0=d0, z0=z0, pwflag=pwflag, hp=hp)
             sel_c = reco_results['sel_c']        # Charged particles only
             sel_n = reco_results['sel_n']        # Neutral particles only
             sel = reco_results['sel']            # All particles (charged + neutral)
         else:
-            gen_results = apply_track_selection_delphi(px_gen=px, py_gen=py, pz_gen=pz, m_gen=m, q_gen=q, th_gen=th, pt_gen=pt, eta_gen=eta, phi_gen=phi, pwflag_gen=pwflag, hp_gen=hp)
+            gen_results = apply_track_selection_aleph(px_gen=px, py_gen=py, pz_gen=pz, m_gen=m, q_gen=q, th_gen=th, pt_gen=pt, eta_gen=eta, phi_gen=phi, pwflag_gen=pwflag, hp_gen=hp)
             sel_c = gen_results['sel_c_gen']     # Generated charged particles only
             sel_n = gen_results['sel_n_gen']     # Generated neutral particles only
             sel = gen_results['sel_gen']         # All generated particles
@@ -342,8 +345,11 @@ if __name__ == "__main__":
             h1d["ThrustThetaMissPNC"].Fill(np.degrees(theta_Tu))
 
         pass_delphi = apply_event_selection_delphi(e_c=e_c, e_n=e_nc, theta_Tu=theta_Tu, E_reco=E)['pass_reco']
+        sphericity = calculate_sphericity_with_fallback(px_nc, py_nc, pz_nc)
+        #pass_aleph = apply_event_selection_aleph(e_c=e_c, e_nc=e_nc, sphericity=sphericity["cos_theta_v1"])['pass_reco']
+        pass_aleph = t_hadrons.passesSTheta > 0.5 and t_hadrons.passesNTrkMin > 0.5 and t_hadrons.passesTotalChgEnergyMin > 0.5 and t_hadrons.passesNeuNch > 0.5
         
-        if pass_delphi:
+        if pass_aleph:
             h0.Fill(1.5)
             
             h1d["NChargedSele"].Fill(len(p3_c))

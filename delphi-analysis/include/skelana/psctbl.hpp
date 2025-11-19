@@ -47,6 +47,5 @@ namespace skelana
 
   inline int& IPAPV(int i,int j) { return psctbl_.ipapv[j-1][i-1]; }
   inline int& ISTVX(int i,int j) { return psctbl_.istvx[j-1][i-1]; }
-} // namespace skelana
 
 #endif // SKELANA_PSCTBL_HPP

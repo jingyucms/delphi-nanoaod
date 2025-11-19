@@ -9,9 +9,9 @@ from array import array
 from common_functions import *
 
 
-#eijbins = [0.0, 0.0001, 0.0002, 0.0005, 0.00075, 0.001, 0.00125, 0.0015, 0.00175, 0.002, 0.00225, 0.0025, 0.00275, 0.003, 0.0035, 0.004, 0.005, 0.007, 0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.10, 0.15, 0.20, 0.3, 1]
+#eijbins = [0.0, 0.0001, 0.00012589254117941674, 0.00015848931924611142, 0.00019952623149688788, 0.00025118864315095795, 0.00031622776601683794, 0.00039810717055349735, 0.0005011872336272725, 0.000630957344480193, 0.0007943282347242813, 0.001, 0.0012589254117941675, 0.001584893192461114, 0.001995262314968879, 0.002511886431509582, 0.0031622776601683794, 0.003981071705534973, 0.005011872336272725, 0.00630957344480193, 0.00794328234724282, 0.01, 0.012589254117941675, 0.01584893192461114, 0.01995262314968881, 0.025118864315095822, 0.03162277660168379, 0.039810717055349734, 0.05011872336272725, 0.06309573444801936, 0.07943282347242822, 0.1, 1]
 
-eijbins = [0.0, 0.0001, 0.00012589254117941674, 0.00015848931924611142, 0.00019952623149688788, 0.00025118864315095795, 0.00031622776601683794, 0.00039810717055349735, 0.0005011872336272725, 0.000630957344480193, 0.0007943282347242813, 0.001, 0.0012589254117941675, 0.001584893192461114, 0.001995262314968879, 0.002511886431509582, 0.0031622776601683794, 0.003981071705534973, 0.005011872336272725, 0.00630957344480193, 0.00794328234724282, 0.01, 0.012589254117941675, 0.01584893192461114, 0.01995262314968881, 0.025118864315095822, 0.03162277660168379, 0.039810717055349734, 0.05011872336272725, 0.06309573444801936, 0.07943282347242822, 0.1, 1]
+eijbins = [0.0, 0.0001, 0.0002, 0.0005, 0.00075, 0.001, 0.00125, 0.0015, 0.00175, 0.002, 0.00225, 0.0025, 0.00275, 0.003, 0.0035, 0.004, 0.005, 0.007, 0.01, 0.02, 0.03, 0.04, 0.05, 0.07, 0.10, 0.15, 0.20, 0.3, 1]
 
 evalues = np.linspace(0, 40, 41)
 ebins = np.append(evalues, [42, 45, 200])
@@ -177,7 +177,7 @@ def apply_track_selection_aleph(px=None, py=None, pz=None, m=None, q=None, th=No
     results = {}
     
     # Check if reconstructed data is provided
-    has_reco = q is not None and th is not None and pt is not None and hp is not None
+    has_reco = q is not None and th is not None and pt is not None 
     
     # Check if generated data is provided
     has_gen = q_gen is not None and th_gen is not None and pt_gen is not None and hp_gen is not None
@@ -330,7 +330,7 @@ def apply_event_selection_aleph(e_c=None, e_nc=None, e_gen_c=None, e_gen_nc=None
     # Event selection criteria
     min_charged_tracks = 5
     min_charged_energy = 15
-    min_charged_particles = 13
+    min_particles = 13
     min_s_angle = -0.82
     max_s_angle = 0.82
     
@@ -339,7 +339,7 @@ def apply_event_selection_aleph(e_c=None, e_nc=None, e_gen_c=None, e_gen_nc=None
         pass_reco = (
             (len(e_c) >= min_charged_tracks) &
             (np.sum(e_c) >= min_charged_energy) &
-            (len(e_nc) >= min_charged_particles) &
+            (len(e_nc) >= min_particles) &
             (abs(sphericity) >= min_s_angle) &
             (abs(sphericity) <= max_s_angle)
         )
@@ -350,7 +350,7 @@ def apply_event_selection_aleph(e_c=None, e_nc=None, e_gen_c=None, e_gen_nc=None
         pass_gen = (
             (len(e_gen_c) >= min_charged_tracks) &
             (np.sum(e_gen_c) >= min_charged_energy) &
-            (len(e_gen_nc) >= min_charged_particles) &
+            (len(e_gen_nc) >= min_particles) &
             (abs(sphericity_gen) >= min_s_angle) &
             (abs(sphericity_gen) <= max_s_angle)
         )

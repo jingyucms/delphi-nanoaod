@@ -186,18 +186,19 @@ void NanoAODWriter::user02()
         fillHadid();
     }
 
-    fillPartLoop(out_pData, out_eData, 0);
+    fillPartLoop(out_pData, out_eData, DataKind::data);
     fillSelection(out_pData, out_eData);
 
     writer_->Fill();
     out_t->Fill();
     if (mc_) {
-        fillPartLoop(out_pData_gen, out_eData_gen, 1);
+        fillPartLoop(out_pData_gen, out_eData_gen, DataKind::gen);
         fillSelection(out_pData_gen, out_eData_gen);
         out_tgen->Fill();
-	fillPartLoop(out_pData_sim, out_eData_sim, 2);
+
+        fillPartLoop(out_pData_sim, out_eData_sim, DataKind::sim);
         fillSelection(out_pData_sim, out_eData_sim);
-	out_tsim->Fill();
+        out_tsim->Fill();
     }
 };
 
@@ -248,10 +249,10 @@ void NanoAODWriter::fillEvent()
     out_pData_sim.RunNo = out_pData.RunNo;
     out_pData_sim.EventNo = out_pData.EventNo;
 
-    out_pData.year = 1993; // temp //
+    out_pData.year = 0; // temp //
 	  // out_pData.subDir = -999;
 	  // out_pData.process = -999;
-    out_pData.source = 70; // temp //
+    out_pData.source = 0; // temp //
     out_pData.isMC = mc_;
     out_pData.isOnres = false;
     out_pData_gen.isMC = true;
@@ -424,21 +425,21 @@ void NanoAODWriter::defineSimPart(std::unique_ptr<RNTupleModel> &model)
 
 void NanoAODWriter::fillSimPart()
 {
-  *nSimPart_ = sk::NVECMC;
-  fillVector(SimPart_fourMomentum_, sk::MTRACK + sk::LVPART, sk::NVECMC, [](int i)
-  { return XYZTVectorF(sk::VECP(1, i), sk::VECP(2, i), sk::VECP(3, i), sk::VECP(4, i)); });
-  fillVector(SimPart_charge_, sk::MTRACK + sk::LVPART, sk::NVECMC, [](int i)
-  { return int(sk::VECP(7, i)); });
-  fillVector(SimPart_pdgId_, sk::MTRACK + sk::LVPART, sk::NVECMC, [](int i)
-  { return int(sk::VECP(8, i)); });
-  fillVector(SimPart_partIdx_, sk::LVPART, sk::NVECMC, [](int i)
-  { return sk::ISTPA(i) - 1; });
-  fillVector(SimPart_genIdx_, sk::LVPART, sk::NVECMC, [](int i)
-  { return sk::ISTSH(i) - 1; });
-  fillVector(SimPart_originVtxIdx_, sk::LVPART, sk::NVECMC, [](int i)
-  { return sk::ISTVX(1, i) - 1; });
-  fillVector(SimPart_decayVtxIdx_, sk::LVPART, sk::NVECMC, [](int i)
-  { return sk::ISTVX(2, i) - 1; });
+    *nSimPart_ = sk::NVECMC;
+    fillVector(SimPart_fourMomentum_, sk::MTRACK + sk::LVPART, sk::NVECMC, [](int i)
+    { return XYZTVectorF(sk::VECP(1, i), sk::VECP(2, i), sk::VECP(3, i), sk::VECP(4, i)); });
+    fillVector(SimPart_charge_, sk::MTRACK + sk::LVPART, sk::NVECMC, [](int i)
+    { return int(sk::VECP(7, i)); });
+    fillVector(SimPart_pdgId_, sk::MTRACK + sk::LVPART, sk::NVECMC, [](int i)
+    { return int(sk::VECP(8, i)); });
+    fillVector(SimPart_partIdx_, sk::LVPART, sk::NVECMC, [](int i)
+    { return sk::ISTPA(i) - 1; });
+    fillVector(SimPart_genIdx_, sk::LVPART, sk::NVECMC, [](int i)
+    { return sk::ISTSH(i) - 1; });
+    fillVector(SimPart_originVtxIdx_, sk::LVPART, sk::NVECMC, [](int i)
+    { return sk::ISTVX(1, i) - 1; });
+    fillVector(SimPart_decayVtxIdx_, sk::LVPART, sk::NVECMC, [](int i)
+    { return sk::ISTVX(2, i) - 1; });
 }
 
 void NanoAODWriter::defineGenPart(std::unique_ptr<RNTupleModel> &model)
@@ -495,18 +496,17 @@ void NanoAODWriter::defineSimVtx(std::unique_ptr<RNTupleModel> &model)
 
 void NanoAODWriter::fillSimVtx()
 {
-
-  *nSimVtx_ = sk::NVTXMC;
-  fillVector(SimVtx_outgoingIdx_, sk::NVTXMX + 1, sk::NVTXMC, [](int i)
-  { return sk::KVTX(1, i) - 1; });
-  fillVector(SimVtx_incomingIdx_, sk::NVTXMX + 1, sk::NVTXMC, [](int i)
-  { return sk::KVTX(2, i) - 1; });
-  fillVector(SimVtx_nOutgoing_, sk::NVTXMX + 1, sk::NVTXMC, [](int i)
-  { return sk::KVTX(3, i); });
-  fillVector(SimVtx_masscode_, sk::NVTXMX + 1, sk::NVTXMC, [](int i)
-  { return sk::KVTX(4, i); });
-  fillVector(SimVtx_position_, sk::NVTXMX + 1, sk::NVTXMC, [](int i)
-  { return XYZPointF(sk::QVTX(1, i), sk::QVTX(2, i), sk::QVTX(3, i)); });
+    *nSimVtx_ = sk::NVTXMC;
+    fillVector(SimVtx_outgoingIdx_, sk::NVTXMX + 1, sk::NVTXMC, [](int i)
+    { return sk::KVTX(1, i) - 1; });
+    fillVector(SimVtx_incomingIdx_, sk::NVTXMX + 1, sk::NVTXMC, [](int i)
+    { return sk::KVTX(2, i) - 1; });
+    fillVector(SimVtx_nOutgoing_, sk::NVTXMX + 1, sk::NVTXMC, [](int i)
+    { return sk::KVTX(3, i); });
+    fillVector(SimVtx_masscode_, sk::NVTXMX + 1, sk::NVTXMC, [](int i)
+    { return sk::KVTX(4, i); });
+    fillVector(SimVtx_position_, sk::NVTXMX + 1, sk::NVTXMC, [](int i)
+    { return XYZPointF(sk::QVTX(1, i), sk::QVTX(2, i), sk::QVTX(3, i)); });
 }
 
 void NanoAODWriter::defineTrac(std::unique_ptr<RNTupleModel> &model)
@@ -865,7 +865,7 @@ void NanoAODWriter::fillHadid()
 
 void NanoAODWriter::fillPartLoop(particleData& pData,
                                  eventData& eData,
-                                 int cat) {
+                                 DataKind cat) {
     int nParticle = 0;
     int nParticleHP = 0;
     int nChargedParticle = 0;
@@ -875,57 +875,96 @@ void NanoAODWriter::fillPartLoop(particleData& pData,
     TVector3 netPGen(0, 0, 0);
     TVector3 netChargedPGen(0, 0, 0);
     std::vector<int> llp;
-    //int nSize = (gen)? *nGenPart_ : *nPart_;
-    int nSize = (cat == 0) ? *nPart_
-           : (cat == 1) ? *nGenPart_
-           : (cat == 2) ? *nSimPart_
-           : 0;   
+    float em(0);
+    float ed(0);
+    int nSize = (cat == DataKind::data) ? *nPart_
+        : (cat == DataKind::gen) ? *nGenPart_
+        : (cat == DataKind::sim) ? *nSimPart_
+        : 0;
     for (auto iSize = 0; iSize < nSize; ++iSize) {
         bool pass = false;
         // calculate charge
         float q = 0;
-        if (cat == 1) {
+        if (cat == DataKind::gen) {
             int status = sk::KP(iSize + 1, 1);
             pass = (status == 1 || status == 4); // final state particle, decayed or not decayed
-        } else if (cat ==2) {
-	    int status = sk::KP(sk::ISTSH(iSize+1), 1);
-	    int particleID = sk::KP(sk::ISTSH(iSize+1), 2);
-	    int mom = sk::ISTVX(1, iSize+1);
-	    int dau = sk::ISTVX(2, iSize+1);
-	    if (status ==1 || (status ==4 && dau ==0)) {
-	      pass = 1;
-	    } else if (status == 4) {
-	      llp.push_back(dau);
-	      pass = 0;
-	    } else if (particleID == 0 && std::find(llp.begin(), llp.end(), mom) != llp.end()) {
-	      pass = 1;
-	    } else {
-	      pass = 0;
-	    }
-	} else {
-	    pass = !Part_lock_->at(iSize); // bad particle
+        } else if (cat == DataKind::sim) {
+            int status = sk::KP(sk::ISTSH(iSize+1), 1);
+            int particleID = sk::KP(sk::ISTSH(iSize+1), 2);
+            int mom = sk::ISTVX(1, iSize+1);
+            int dau = sk::ISTVX(2, iSize+1);
+            if (status == 1 || (status == 4 && dau == 0)) {
+                pass = 1;
+            } else if (status == 4) {
+                llp.push_back(dau);
+                pass = 0;
+            } else if (particleID == 0 && std::find(llp.begin(), llp.end(), mom) != llp.end()) {
+                pass = 1;
+            } else {
+                pass = 0;
+            }
+        } else {
+            pass = !Part_lock_->at(iSize); // bad particle
         }
         if (pass) {
-	  // FORTRAN index starts with 1
-	  int i = iSize + 1;
-	  XYZTVectorF temp;
-	  if (cat==1) {
-	    temp = GenPart_fourMomentum_->at(iSize);
-	    int pdgid = sk::KP(i, 2);
-	    TParticlePDG* particle = pdgDatabase->GetParticle(pdgid);
-	    if (particle) {
-	      q = particle->Charge() / 3.0;
-	    } else {
-	      particle = pdgDatabase->GetParticle(-pdgid);
-	      q = -particle->Charge() / 3.0;
-	    }
-	    pData.pid[nParticle] = pdgid;
-	    // for gen, use this var to store Lund status
-	    pData.pwflag[nParticle] = (sk::KP(i, 1) == 1) ? 1 : 4; 
-	    pData.highPurity[nParticle]= 1;
+            // FORTRAN index starts with 1
+            int i = iSize + 1;
+            XYZTVectorF temp;
+            if (cat == DataKind::gen) {
+                temp = GenPart_fourMomentum_->at(iSize);
+                int pdgid = sk::KP(i, 2);
+                TParticlePDG* particle = pdgDatabase->GetParticle(pdgid);
+                if (particle) {
+                    q = particle->Charge() / 3.0;
+                } else {
+                    particle = pdgDatabase->GetParticle(-pdgid);
+                    q = -particle->Charge() / 3.0;
+                }
+                pData.pid[nParticle] = pdgid;
+                // for gen, use this var to store Lund status
+                pData.pwflag[nParticle] = (sk::KP(i, 1) == 1) ? 1 : 4; 
+                pData.highPurity[nParticle]= 1;
 
-	    pData.index[nParticle] = i;
-	    pData.correspondenceIndex[nParticle] = sk::ILUST(i);
+                nParticleHP++;
+                if (abs(q) > 0.5) {
+                    nChargedParticle++;
+                    nChargedParticleHP++;
+                }
+            } else if (cat == DataKind::sim) {
+                temp = SimPart_fourMomentum_->at(iSize);
+                q = sk::VECP(7, sk::MTRACK+i);
+                pData.pid[nParticle] = sk::KP(sk::ISTSH(iSize+1), 2);
+                // store mass code. -- 2 for electron (only thing useful as of June 11 2025)
+                pData.pwflag[nParticle] = sk::VECP(8, sk::MTRACK+i);
+                pData.highPurity[nParticle]= 1;
+                nParticleHP++;
+                nChargedParticle++;
+                nChargedParticleHP++;
+            } else {
+                q = Part_charge_->at(iSize);
+                temp = Part_fourMomentum_->at(iSize);
+                lock[nParticle] = Part_lock_->at(iSize);
+                // LEPTON ID with standard MUID and ELID
+                if (Part_charge_->at(iSize) == 0) {
+                    pData.pwflag[nParticle] = 4;
+                    // standard muon selection (3rd bit from the right)
+                } else if (sk::KMUID(1, i) & (1 << 2)) {
+                    pData.pwflag[nParticle] = 1;
+                    // standard electron selection
+                } else if (sk::KELID(1, i) >= 4) {
+                    pData.pwflag[nParticle] = 2;
+                    // loose conversion ele tag
+                } else if (sk::KELID(2, i) >= 1) {
+                    pData.pwflag[nParticle] = 3;
+                } else {
+                    pData.pwflag[nParticle] = 0;
+                }
+                // TODO: use vdHits?
+                pData.ntpc[nParticle] = (pData.charge[nParticle]!=0)? 7: 0;
+                pData.d0[nParticle] = sk::QTRAC(4, i);
+                pData.z0[nParticle] = sk::QTRAC(5, i);
+                // use this variable to store track length for DELPHI
+                pData.weight[nParticle] = sk::QTRAC(24, i);
 
 	    nParticleHP++;
 	    if (abs(q) > 0.5) {
@@ -985,21 +1024,40 @@ void NanoAODWriter::fillPartLoop(particleData& pData,
 	      pData.highPurity[nParticle]= pData.pwflag[nParticle]==4 && temp.Pt() >= 0.4;
 	    }
 
-	    pData.index[nParticle] = i;
-	    pData.correspondenceIndex[nParticle] = sk::IPAST(i);
-	    
-	    if(pData.pwflag[nParticle]<=2) {
-	      nChargedParticle++;
-	      if (pData.highPurity[nParticle]) nChargedParticleHP++;
-	    }
-	    if (pData.highPurity[nParticle]) {
-	      nParticleHP++;
-	    }
-	  }
-	  netP -= TVector3(temp.x(), temp.y(), temp.z());
-	  if (abs(q) > 0.5) {
-	    netChargedP -= TVector3(temp.x(), temp.y(), temp.z());
-	  }
+            // below we follow the same definition in eventSelection.h
+            // TODO: Use DELPHI selections
+            if (pData.pwflag[nParticle]<=2) {
+                pData.highPurity[nParticle]= pData.pwflag[nParticle]<=2 && temp.Pt() >= 0.2;
+            } else if (pData.pwflag[nParticle]==4) {
+                pData.highPurity[nParticle]= pData.pwflag[nParticle]==4 && temp.Pt() >= 0.4;
+            }
+
+            if(pData.pwflag[nParticle]<=2) {
+                nChargedParticle++;
+                if (pData.highPurity[nParticle]) nChargedParticleHP++;
+            }
+            if (pData.highPurity[nParticle]) {
+                nParticleHP++;
+            }
+            if (abs(q) > 0.5) {
+                netChargedP -= TVector3(temp.x(), temp.y(), temp.z());
+            }
+
+            pData.px[nParticle] = temp.x();
+            pData.py[nParticle] = temp.y();
+            pData.pz[nParticle] = temp.z();
+            emf[nParticle] = sk::QEMF(8,i);
+            hpc[nParticle] = sk::QHPC(8,i);
+            hac[nParticle] = sk::QHAC(8,i);
+            stic[nParticle] = sk::QSTIC(1,i);
+            pData.pt[nParticle] = temp.Pt();
+            pData.pmag[nParticle]   = temp.P();
+            pData.rap[nParticle]    = temp.Rapidity();
+            pData.eta[nParticle]    = temp.Eta();
+            pData.theta[nParticle]  = temp.Theta();
+            pData.phi[nParticle]    = temp.Phi();
+            pData.mass[nParticle]   = temp.M();
+            pData.charge[nParticle] = q;
 
 	  pData.px[nParticle] = temp.x();
 	  pData.py[nParticle] = temp.y();

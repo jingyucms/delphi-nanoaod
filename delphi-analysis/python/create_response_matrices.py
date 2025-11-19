@@ -22,6 +22,7 @@ class MyResponse:
 
     def setALEPH(self):
         self._isALEPH = True
+        self._match_r = 9999
 
     def writeToFile(self, output):
         fout = ROOT.TFile(output, 'recreate')
@@ -315,11 +316,11 @@ class MyResponse:
             self._hists['counter'].Fill(0.5)
 
             if self._isALEPH:
-                all_results = apply_track_selection_delphi(px=px, py=py, pz=pz, m=m, q=q, th=th,
-                                                           pt=pt, eta=eta, phi=phi, d0=d0, z0=z0, pwflag=pwflag, hp=hp,
-                                                           px_gen=px_gen, py_gen=py_gen, pz_gen=pz_gen, m_gen=m_gen, q_gen=q_gen,
-                                                           th_gen=th_gen, pt_gen=pt_gen, eta_gen=eta_gen, phi_gen=phi_gen,
-                                                           pwflag_gen=pwflag_gen, hp_gen=hp_gen)
+                all_results = apply_track_selection_aleph(px=px, py=py, pz=pz, m=m, q=q, th=th,
+                                                          pt=pt, eta=eta, phi=phi, d0=d0, z0=z0, pwflag=pwflag, hp=hp,
+                                                          px_gen=px_gen, py_gen=py_gen, pz_gen=pz_gen, m_gen=m_gen, q_gen=q_gen,
+                                                          th_gen=th_gen, pt_gen=pt_gen, eta_gen=eta_gen, phi_gen=phi_gen,
+                                                          pwflag_gen=pwflag_gen, hp_gen=hp_gen)
                 sel_c = all_results['sel_c']          # Reco charged particles
                 sel = all_results['sel']              # All reco particles
                 sel_c_gen = all_results['sel_c_gen']  # Gen charged particles
@@ -345,13 +346,22 @@ class MyResponse:
                 #    px_gen, py_gen, pz_gen, m_gen, q_gen, th_gen, pt_gen, eta_gen, phi_gen, pwflag_gen, hp_gen
                 #)
 
-            px_c, py_c, pz_c, m_c, q_c, pt_c, th_c, phi_c, idx_c, cspidx_c = (
-                v1[sel_c] for v1 in (px, py, pz, m, q, pt, th, phi, idx, cspidx)
-            )
+            if self._isALEPH:
+                px_c, py_c, pz_c, m_c, q_c, pt_c, th_c, phi_c = (
+                    v1[sel_c] for v1 in (px, py, pz, m, q, pt, th, phi)
+                )
 
-            px_gen_c, py_gen_c, pz_gen_c, m_gen_c, q_gen_c, pt_gen_c, th_gen_c, phi_gen_c, idx_gen_c, cspidx_gen_c = (
-                v2[sel_c_gen] for v2 in (px_gen, py_gen, pz_gen, m_gen, q_gen, pt_gen, th_gen, phi_gen, idx_gen, cspidx_gen)
-            )
+                px_gen_c, py_gen_c, pz_gen_c, m_gen_c, q_gen_c, pt_gen_c, th_gen_c, phi_gen_c = (
+                    v2[sel_c_gen] for v2 in (px_gen, py_gen, pz_gen, m_gen, q_gen, pt_gen, th_gen, phi_gen)
+                )
+            else:
+                px_c, py_c, pz_c, m_c, q_c, pt_c, th_c, phi_c, idx_c, cspidx_c = (
+                    v1[sel_c] for v1 in (px, py, pz, m, q, pt, th, phi, idx, cspidx)
+                )
+
+                px_gen_c, py_gen_c, pz_gen_c, m_gen_c, q_gen_c, pt_gen_c, th_gen_c, phi_gen_c, idx_gen_c, cspidx_gen_c = (
+                    v2[sel_c_gen] for v2 in (px_gen, py_gen, pz_gen, m_gen, q_gen, pt_gen, th_gen, phi_gen, idx_gen, cspidx_gen)
+                )
 
             px_n, py_n, pz_n, m_n, q_n, pt_n, th_n, phi_n = (
                 v3[sel] for v3 in (px, py, pz, m, q, pt, th, phi)
@@ -368,10 +378,16 @@ class MyResponse:
             e_gen_c = np.sqrt(px_gen_c**2 + py_gen_c**2 + pz_gen_c**2 + m_gen_c**2)
             e_gen_n = np.sqrt(px_gen_n**2 + py_gen_n**2 + pz_gen_n**2 + m_gen_n**2)
 
-            rec_c = P4Block.build(px_c ,py_c ,pz_c ,q_c ,
-                                      pt_c ,th_c ,phi_c ,e_c ,m_c ,idx_c, cspidx_c)
-            gen_c = P4Block.build(px_gen_c ,py_gen_c ,pz_gen_c ,q_gen_c ,
-                                      pt_gen_c ,th_gen_c ,phi_gen_c ,e_gen_c, m_gen_c, idx_gen_c, cspidx_gen_c)
+            if self._isALEPH:
+                rec_c = P4Block.build(px_c ,py_c ,pz_c ,q_c ,
+                                        pt_c ,th_c ,phi_c ,e_c ,m_c)
+                gen_c = P4Block.build(px_gen_c ,py_gen_c ,pz_gen_c ,q_gen_c ,
+                                        pt_gen_c ,th_gen_c ,phi_gen_c ,e_gen_c, m_gen_c)
+            else:
+                rec_c = P4Block.build(px_c ,py_c ,pz_c ,q_c ,
+                                        pt_c ,th_c ,phi_c ,e_c ,m_c ,idx_c, cspidx_c)
+                gen_c = P4Block.build(px_gen_c ,py_gen_c ,pz_gen_c ,q_gen_c ,
+                                        pt_gen_c ,th_gen_c ,phi_gen_c ,e_gen_c, m_gen_c, idx_gen_c, cspidx_gen_c)               
 
             rec = P4Block.build(px_n ,py_n ,pz_n ,q_n ,
                                       pt_n ,th_n ,phi_n ,e_n)
@@ -393,6 +409,7 @@ class MyResponse:
                 )
                 pass_reco = results['pass_reco']
                 pass_gen = results['pass_reco']
+                pass_reco = treco.passesSTheta > 0.5 and treco.passesNTrkMin > 0.5 and treco.passesTotalChgEnergyMin > 0.5 and treco.passesNeuNch > 0.5
             else:
                 results = apply_event_selection_delphi(
                     e_c, e_n, e_gen_c, e_gen_n, theta_Tu, theta_gen_Tu, E_reco, E_gen
@@ -595,7 +612,8 @@ class MyResponse:
 
 if __name__ == "__main__":
 
-    filename = '/eos/user/z/zhangj/DELPHI/simulation/v94c/91.25/kk2f4146_qqpy/nanoaod_kk2f4146_qqpy_91.25_40001.sdst.root'
+    #filename = '/eos/user/z/zhangj/DELPHI/simulation/v94c/91.25/kk2f4146_qqpy/nanoaod_kk2f4146_qqpy_91.25_40001.sdst.root'
+    filename = '/eos/user/z/zhangj/ALEPH/SamplesLEP1/ALEPHMC/LEP1MC1994_recons_aftercut-020.root'
     filenameout = "response_test.root"
 
     parser = argparse.ArgumentParser()
@@ -634,4 +652,3 @@ if __name__ == "__main__":
     response.bookResponseMatricesNoRooUnfold()
     response.loop()
     response.writeToFile(fnameout)
-

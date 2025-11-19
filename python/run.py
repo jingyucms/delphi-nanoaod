@@ -4,6 +4,7 @@ import glob
 import sys
 import subprocess
 import multiprocessing
+from functools import partial
 
 fatmen = [
 #    "xs_wphact211ncgg_e182.7_m80.4_c97_1l_g1",

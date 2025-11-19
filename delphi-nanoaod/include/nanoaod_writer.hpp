@@ -40,6 +40,11 @@ typedef ROOT::Math::SMatrixSym3F SMatrixSym3F;
 typedef ROOT::Math::SMatrixSym5F SMatrixSym5F;
 typedef ROOT::Math::SVector<float, 5> SVector5F;
 
+enum class DataKind {
+    data,
+    gen,
+    sim
+};
 
 class NanoAODWriter : public sk::Analysis
 {
@@ -88,7 +93,7 @@ private:
     void fillHadid();
     void defineBtag(std::unique_ptr<RNTupleModel> &model);
     void fillBtag();
-    void fillPartLoop(particleData& pData, eventData& eData, int cat = 0);
+    void fillPartLoop(particleData& pData, eventData& eData, DataKind cat = DataKind::data);
     void fillSelection(particleData& pData, eventData& eData);
 
     std::filesystem::path output_;

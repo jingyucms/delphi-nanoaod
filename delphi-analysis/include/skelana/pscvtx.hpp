@@ -37,21 +37,21 @@ namespace skelana
 *
 */
 
-  inline const int LENVTX = 17;
-  inline const int NVTXMX = 150;
-  extern "C" struct
-  {
-    int nvtx;
-    int nvtxmc;
-    int lvtx[2*NVTXMX];
-    int kvtx[LENVTX * 2 * NVTXMX];
-  } pscvtx_;
-  
-  inline int &NVTX = pscvtx_.nvtx;
-  inline int &NVTXMC = pscvtx_.nvtxmc;
-  inline int& LVTX(int j) {return pscvtx_.lvtx[j-1];}
-  inline int& KVTX(int i, int j) {return pscvtx_.kvtx[(i-1) + 17*(j-1)]; }
-  inline float& QVTX(int i, int j) {return *reinterpret_cast<float*>(&pscvtx_.kvtx[(i - 1) + 17*(j - 1)]);}
+    inline const int LENVTX = 17;
+    inline const int NVTXMX = 150;
+    extern "C" struct
+    {
+        int nvtx;
+        int nvtxmc;
+        int lvtx[2*NVTXMX];
+        int kvtx[LENVTX * 2 * NVTXMX];
+    } pscvtx_;
+
+    inline int &NVTX = pscvtx_.nvtx;
+    inline int &NVTXMC = pscvtx_.nvtxmc;
+    inline int& LVTX(int j) {return pscvtx_.lvtx[j-1];}
+    inline int& KVTX(int i, int j) {return pscvtx_.kvtx[(i-1) + LENVTX * (j-1)]; }
+    inline float& QVTX(int i, int j) {return *reinterpret_cast<float*>(&pscvtx_.kvtx[(i - 1) + LENVTX * (j - 1)]);}
 } // namespace skelana
 
 #endif // SKELANA_PSCVTX_HPP
