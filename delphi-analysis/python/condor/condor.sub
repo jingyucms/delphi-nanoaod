@@ -1,0 +1,36 @@
+universe       = vanilla
+executable     = ./condor/run_condor.sh
+
+output         = ./condor/condorOut/condor_$ENV(f).stdout
+error          = ./condor/condorOut/condor_$ENV(f).stderr
+log            = ./condor/condorOut/condor_$ENV(f).log
+
+arguments     = $ENV(EXE) $ENV(p) h$ENV(ana)_$ENV(f)
+
+### systematic undertainties
+# v16
+#arguments     = $ENV(EXE) $ENV(p) h$ENV(ana)_$ENV(f) --apply_bias_charged --bias_charged_mode linear
+# v17
+#arguments     = $ENV(EXE) $ENV(p) h$ENV(ana)_$ENV(f) --apply_bias_neutral --bias_neutral_mode none --bias_neutral_shift 0.2
+# v18
+#arguments     = $ENV(EXE) $ENV(p) h$ENV(ana)_$ENV(f) --apply_fake_drop
+# v19
+#arguments     = $ENV(EXE) $ENV(p) h$ENV(ana)_$ENV(f) --drop_charged_fraction 0.02
+# v20
+#arguments     = $ENV(EXE) $ENV(p) h$ENV(ana)_$ENV(f) --drop_neutral_fraction 0.02
+
+
+# v34
+#arguments     = $ENV(EXE) $ENV(p) h$ENV(ana)_$ENV(f) --use_evt_weight
+
++JobFlavour    = "$ENV(JOB_FLAVOUR)"
+request_cpus   = 4
+
+x509userproxy  = $(X509_USER_PROXY)
+use_x509userproxy = True
+getenv         = True
+
+should_transfer_files   = YES
+when_to_transfer_output = ON_EXIT
+
+queue 1
