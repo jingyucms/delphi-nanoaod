@@ -29,7 +29,7 @@ echo "  Extra args: ${@:4}"
 python3 "$1" "$2" "$3" "${@:4}"
 
  # --- Move result safely to EOS
-OUTDIR=/eos/user/z/zhangj/DELPHI/Ntuples/simulation
+OUTDIR=/eos/user/z/zhangj/DELPHI/Ntuples/
 #OUTDIR=$CODEDIR/out
 mkdir -p "$OUTDIR"
 mv -v "$3" "$OUTDIR/"

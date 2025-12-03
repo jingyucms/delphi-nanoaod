@@ -26,22 +26,22 @@ isGen = False
 
 #executable = "analysis_correlation.py"
 #executable = "analysis_eec_lep2.py"
-#executable = "analysis_eec.py"
+executable = "analysis_eec.py"
 #executable = "analysis_trk.py"
-executable = "create_response_matrices.py"
+#executable = "create_response_matrices.py"
 #executable = "create_response_matrices_thrust.py"
 
 nicknames = [
-#    "sh_kk2f4146qqpy_e91.25_c94_2l_c2",
+    "sh_kk2f4146qqpy_e91.25_c94_2l_c2",
 #    "sh_kk2f4146qqardcy_e91.25_r94_2l_c2",
 #    "Pythia8_94c",
 #    "Pythia8_Dire_94c",
-#    "sh_kk2f4146qqpy_e91.25_c95_1l_d2",
+    "sh_kk2f4146qqpy_e91.25_c95_1l_d2",
 #    "Pythia8_95d",
 #    "Pythia8_Dire_95d"
-#    "short94_c2",
-#    "short95_d2"
-    "ALEPHMC"
+    "short94_c2",
+    "short95_d2"
+#    "ALEPHMC"
 #    "ALEPH"
 ]
 
@@ -59,7 +59,7 @@ nicknames = [
     #"xs_kk2f4143qq_e201.6_l99_1l_e1",
 #]
 
-version = "v3"
+version = "v40"
 
 config = load_config()
 
