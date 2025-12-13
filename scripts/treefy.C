@@ -63,7 +63,7 @@ void treefy(const char* infile = "test.root",
     // Select columns
     std::vector<std::string> filtered;
     // std::regex part_pattern("^Part_fourMomentum");
-    std::vector<std::string> bad_types = {"Event_shortDstVersion", "Trac", "Vtx"};
+    std::vector<std::string> bad_types = {"Event_shortDstVersion"};
 
     for (auto&& col : colNames) {
         std::string colstr = std::string(col);
