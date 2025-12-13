@@ -875,8 +875,6 @@ void NanoAODWriter::fillPartLoop(particleData& pData,
     TVector3 netPGen(0, 0, 0);
     TVector3 netChargedPGen(0, 0, 0);
     std::vector<int> llp;
-    float em(0);
-    float ed(0);
     int nSize = (cat == DataKind::data) ? *nPart_
         : (cat == DataKind::gen) ? *nGenPart_
         : (cat == DataKind::sim) ? *nSimPart_
@@ -924,6 +922,8 @@ void NanoAODWriter::fillPartLoop(particleData& pData,
                 // for gen, use this var to store Lund status
                 pData.pwflag[nParticle] = (sk::KP(i, 1) == 1) ? 1 : 4; 
                 pData.highPurity[nParticle]= 1;
+                pData.index[nParticle] = i;
+                pData.correspondenceIndex[nParticle] = sk::ILUST(i);
 
                 nParticleHP++;
                 if (abs(q) > 0.5) {
@@ -937,6 +937,9 @@ void NanoAODWriter::fillPartLoop(particleData& pData,
                 // store mass code. -- 2 for electron (only thing useful as of June 11 2025)
                 pData.pwflag[nParticle] = sk::VECP(8, sk::MTRACK+i);
                 pData.highPurity[nParticle]= 1;
+                pData.index[nParticle] = i;
+                pData.correspondenceIndex[nParticle] = sk::ISTPA(i);
+                
                 nParticleHP++;
                 nChargedParticle++;
                 nChargedParticleHP++;
@@ -965,80 +968,28 @@ void NanoAODWriter::fillPartLoop(particleData& pData,
                 pData.z0[nParticle] = sk::QTRAC(5, i);
                 // use this variable to store track length for DELPHI
                 pData.weight[nParticle] = sk::QTRAC(24, i);
-
-	    nParticleHP++;
-	    if (abs(q) > 0.5) {
-	      nChargedParticle++;
-	      nChargedParticleHP++;
-	    }
-	  } else if (cat==2) {
-	    temp = SimPart_fourMomentum_->at(iSize);
-	    q = sk::VECP(7, sk::MTRACK+i);    
-	    pData.pid[nParticle] = sk::KP(sk::ISTSH(iSize+1), 2);
-	    // store mass code. -- 2 for electron (only thing useful as of June 11 2025)
-	    pData.pwflag[nParticle] = sk::VECP(8, i); 
-	    pData.highPurity[nParticle]= 1;
-
-	    pData.index[nParticle] = i;
-	    pData.correspondenceIndex[nParticle] = sk::ISTPA(i);
-	    
-	    nParticleHP++;
-	    nChargedParticle++;
-	    nChargedParticleHP++;
-	  } else {
-	    q = Part_charge_->at(iSize);
-	    temp = Part_fourMomentum_->at(iSize);
-	    lock[nParticle] = Part_lock_->at(iSize);
-	    // Photon ID using VECP pre-selected for now (2025 June 26)
-	    if (Part_charge_->at(iSize) == 0) {
-	      if (sk::VECP(8, i) == 21) {
-		pData.pwflag[nParticle] = 21;
-	      }	else {
-		pData.pwflag[nParticle] = 4;
-	      }
-	    // LEPTON ID with standard MUID and ELID
-	    } else if (sk::KMUID(1, i) & (1 << 2)) {
-	      // standard muon selection (3rd bit from the right)
-	      pData.pwflag[nParticle] = 1;
-	    } else if (sk::KELID(1, i) >= 4) {
-	      // standard electron selection
-	      pData.pwflag[nParticle] = 2;
-	      // loose conversion ele tag
-	    } else if (sk::KELID(2, i) >= 1) {
-	      pData.pwflag[nParticle] = 3;
-	    } else {
-	      pData.pwflag[nParticle] = 0;
-	    }
-	    // TODO: use vdHits?
-	    pData.ntpc[nParticle] = (pData.charge[nParticle]!=0)? 7: 0;
-	    pData.d0[nParticle] = sk::QTRAC(4, i);
-	    pData.z0[nParticle] = sk::QTRAC(5, i);
-	    // use this variable to store track length for DELPHI
-	    pData.weight[nParticle] = sk::QTRAC(24, i);
-	    
-	    // below we follow the same definition in eventSelection.h
-	    // TODO: Use DELPHI selections
-	    if (pData.pwflag[nParticle]<=2) {
-	      pData.highPurity[nParticle]= pData.pwflag[nParticle]<=2 && temp.Pt() >= 0.2;
-	    } else if (pData.pwflag[nParticle]==4) {
-	      pData.highPurity[nParticle]= pData.pwflag[nParticle]==4 && temp.Pt() >= 0.4;
-	    }
-
-            // below we follow the same definition in eventSelection.h
-            // TODO: Use DELPHI selections
-            if (pData.pwflag[nParticle]<=2) {
-                pData.highPurity[nParticle]= pData.pwflag[nParticle]<=2 && temp.Pt() >= 0.2;
-            } else if (pData.pwflag[nParticle]==4) {
-                pData.highPurity[nParticle]= pData.pwflag[nParticle]==4 && temp.Pt() >= 0.4;
+                
+                // below we follow the same definition in eventSelection.h
+                // TODO: Use DELPHI selections
+                if (pData.pwflag[nParticle]<=2) {
+                    pData.highPurity[nParticle]= pData.pwflag[nParticle]<=2 && temp.Pt() >= 0.2;
+                } else if (pData.pwflag[nParticle]==4) {
+                    pData.highPurity[nParticle]= pData.pwflag[nParticle]==4 && temp.Pt() >= 0.4;
+                }
+                
+                pData.index[nParticle] = i;
+                pData.correspondenceIndex[nParticle] = sk::IPAST(i);
+                
+                if(pData.pwflag[nParticle]<=2) {
+                    nChargedParticle++;
+                    if (pData.highPurity[nParticle]) nChargedParticleHP++;
+                }
+                if (pData.highPurity[nParticle]) {
+                    nParticleHP++;
+                }
             }
-
-            if(pData.pwflag[nParticle]<=2) {
-                nChargedParticle++;
-                if (pData.highPurity[nParticle]) nChargedParticleHP++;
-            }
-            if (pData.highPurity[nParticle]) {
-                nParticleHP++;
-            }
+            
+            netP -= TVector3(temp.x(), temp.y(), temp.z());
             if (abs(q) > 0.5) {
                 netChargedP -= TVector3(temp.x(), temp.y(), temp.z());
             }
@@ -1058,24 +1009,8 @@ void NanoAODWriter::fillPartLoop(particleData& pData,
             pData.phi[nParticle]    = temp.Phi();
             pData.mass[nParticle]   = temp.M();
             pData.charge[nParticle] = q;
-
-	  pData.px[nParticle] = temp.x();
-	  pData.py[nParticle] = temp.y();
-	  pData.pz[nParticle] = temp.z();
-	  emf[nParticle] = sk::QEMF(8,i);
-	  hpc[nParticle] = sk::QHPC(8,i);
-	  hac[nParticle] = sk::QHAC(8,i);
-	  stic[nParticle] = sk::QSTIC(1,i);
-	  pData.pt[nParticle] = temp.Pt();
-	  pData.pmag[nParticle]   = temp.P();
-	  pData.rap[nParticle]    = temp.Rapidity();
-	  pData.eta[nParticle]    = temp.Eta();
-	  pData.theta[nParticle]  = temp.Theta();
-	  pData.phi[nParticle]    = temp.Phi();
-	  pData.mass[nParticle]   = temp.M();
-	  pData.charge[nParticle] = q;
-	  
-	  ++nParticle;
+            
+            ++nParticle;
         }
     }
     pData.nParticle         = nParticle;
@@ -1093,7 +1028,6 @@ void NanoAODWriter::fillPartLoop(particleData& pData,
     eData.missChargedTheta = netChargedP.Theta();
     eData.missChargedPhi = netChargedP.Phi();
 }
-
 
 void NanoAODWriter::fillSelection(particleData& pData,
                                   eventData& eData) {
