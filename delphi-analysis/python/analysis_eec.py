@@ -41,8 +41,11 @@ h1d_defs = {
     "Thrust_before_log_Escheme" : logtbins, 
     "Thrust_before_log2_Escheme": logtbins2,
 
-    "ThrustC_beforeDelphi"       : tbinsDelphi,
-    "ThrustCDelphi"       : tbinsDelphi,
+    "ThrustC_beforeDelphi"       : tbins2,
+    "ThrustCDelphi"       : tbins2,
+
+    "ThrustC_beforeDelphi_Escheme"       : tbins2,
+    "ThrustCDelphi_Escheme"       : tbins2,   
     
     "ThrustMissPNC" : tbins,
     "ThrustMissPNC2" : tbins2,
@@ -183,7 +186,7 @@ if __name__ == "__main__":
     filename = '/eos/user/z/zhangj/DELPHI/simulation/v94c/91.25/kk2f4146_qqpy/nanoaod_kk2f4146_qqpy_91.25_40001.sdst.root'
     #filename = "/eos/user/z/zhangj/ALEPH/SamplesLEP1/ALEPHMC/LEP1MC1994_recons_aftercut-001.root"
     filenameout = 'h_test.root'
-    isGen = False
+    isGen = True
     
     parser = argparse.ArgumentParser()
     parser.add_argument("infiles", nargs='?', default=filename, help="name of input files")
@@ -398,7 +401,10 @@ if __name__ == "__main__":
         n = p3 / np.where(p3_norm > 0, p3_norm, 1.0)  # unit vectors
         p3_escheme = e[:, np.newaxis] * n  # E-scheme momentum: E*n
 
-        axis_escheme, T_escheme = thrust_axis_fast(p3_escheme, include_met=False)
+        if isGen == True:
+            axis_escheme, T_escheme = thrust_axis_fast(p3_escheme, include_met=False)
+        else:
+            axis_escheme, T_escheme = thrust_axis_fast(p3_escheme, include_met=True)
 
         h1d["Thrust_before_Escheme"].Fill(1-T_escheme)
         h1d["Thrust_before2_Escheme"].Fill(1-T_escheme)
@@ -423,6 +429,10 @@ if __name__ == "__main__":
 
         axisC, TC = thrust_axis_fast(p3, include_met=False)
         h1d["ThrustC_beforeDelphi"].Fill(1-TC)
+
+        p3_escheme = p3_escheme[sel_before]
+        axisC, TC = thrust_axis_fast(p3_escheme, include_met=False)
+        h1d["ThrustC_beforeDelphi_Escheme"].Fill(1-TC)
 
         
         # |p|   (N,1) and (1,N) norms
@@ -532,15 +542,23 @@ if __name__ == "__main__":
         else:
             axis_nc_met, T_nc_met = thrust_axis_fast(p3_nc, include_met=True)
 
+        axis_c, T_c = thrust_axis_fast(p3_c, include_met=False)
+
         # E-scheme thrust for selected particles
         p3_nc_norm = np.linalg.norm(p3_nc, axis=1, keepdims=True)
         n_nc = p3_nc / np.where(p3_nc_norm > 0, p3_nc_norm, 1.0)
         p3_nc_escheme = e_nc[:, np.newaxis] * n_nc
+
+        p3_c_norm = np.linalg.norm(p3_c, axis=1, keepdims=True)
+        n_c = p3_c / np.where(p3_c_norm > 0, p3_c_norm, 1.0)
+        p3_c_escheme = e_c[:, np.newaxis] * n_c
         
         if isGen == True:
             axis_nc_escheme, T_nc_escheme = thrust_axis_fast(p3_nc_escheme, include_met=False)
         else:
             axis_nc_escheme, T_nc_escheme = thrust_axis_fast(p3_nc_escheme, include_met=True)
+
+        axis_c_escheme, T_c_escheme = thrust_axis_fast(p3_c_escheme, include_met=False)
 
         theta_Tu_met = thrust_theta(axis_nc_met, T_nc_met, fold=False)
         theta_Tu_escheme = thrust_theta(axis_nc_escheme, T_nc_escheme, fold=False)
@@ -616,8 +634,6 @@ if __name__ == "__main__":
 
             h1d["SumESeleMissP"].Fill(np.sum(e_nc)+np.linalg.norm(p_miss_nc))
 
-            axis_c, T_c = thrust_axis_fast(p3_c, include_met=False)
-
             h1d["ThrustCDelphi"].Fill(1-T_c, evt_weight)
 
             h1d["ThrustMissPNC"].Fill(1-T_nc_met, evt_weight)
@@ -656,6 +672,8 @@ if __name__ == "__main__":
             h1d["ThrustMissPNCLog_Escheme"].Fill(np.log(1-T_nc_escheme), evt_weight)
             h1d["ThrustMissPNCLog2_Escheme"].Fill(np.log(1-T_nc_escheme), evt_weight)            
 
+            h1d["ThrustCDelphi_Escheme"].Fill(1-T_c_escheme, evt_weight)
+            
         N += 1
 
     print("Processed", N, "events")

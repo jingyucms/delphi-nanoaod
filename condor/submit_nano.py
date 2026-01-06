@@ -134,14 +134,14 @@ if __name__ == "__main__":
     
     #nickname = "short94_c2"
     #nickname = "sh_qqps_e91.25_c94_2l_c2"
-    #nickname = "sh_kk2f4146qqpy_e91.25_c94_2l_c2"
+    nickname = "sh_kk2f4146qqpy_e91.25_c94_2l_c2"
     #nickname = "sh_kk2f4146qqpydcy_e91.25_c94_2l_c2"
     #nickname = "sh_kk2f4146qqardcy_e91.25_r94_2l_c2"
     #nickname = "sh_apacic105_e91.25_w94_2l_c2"
     #nickname = "sh_zgpy_b94_2l_c2"
     #nickname = "sh_qqps_k94_2l_c2"
     #nickname = "sh_pythia8_94c"
-    nickname = "sh_pythia8_dire_94c"
+    #nickname = "sh_pythia8_dire_94c"
     #nickname = "sh_kk2f4146tthl_e91.25_c94_2l_c2"
 
     #nickname = "short95_d2"
