@@ -1,6 +1,7 @@
 import os
 import glob
 import subprocess
+import time
 from pathlib import Path
 import sys
 import yaml
@@ -10,15 +11,72 @@ def load_config(yaml_path="../../condor/sample_list.yaml"):
         return yaml.safe_load(f)
 
 opendata_dir = Path("/eos/opendata/delphi")
-user_output_base = Path("/eos/user/z/zhangj/DELPHI")
+user_output_base = Path("/eos/user/z/zhangj/DELPHI")  # Keep old output location
+
+# Load config early so it's available to all functions
+config = None
+
+def load_config_if_needed():
+    """Lazy load config when first needed"""
+    global config
+    if config is None:
+        config = load_config()
+
+def extract_version_info(version_str):
+    """
+    Extract year and short version from version string.
+    Example: "v94c" -> year="1994", short_version="94c"
+    """
+    # Remove 'v' prefix
+    short_version = version_str.lstrip('v')
+    
+    # Extract year prefix (first 2 digits)
+    year_prefix = short_version[:2]
+    
+    # Map to full year
+    year = "19" + year_prefix
+    
+    return year, short_version
+
+def build_input_pattern(nickname):
+    """
+    Build input file pattern from new EOS structure.
+    Returns the pattern to find input files.
+    """
+    load_config_if_needed()
+    cfg = config[nickname]
+    base = Path("/eos/experiment/eealliance/Samples/DELPHI")
+    
+    # Extract version info
+    year, short_version = extract_version_info(cfg["version"])
+    
+    # Use copy_energy if exists, otherwise use energy
+    energy = cfg.get("copy_energy") or cfg["energy"]
+    
+    if cfg["type"] == "data":
+        # Data: read from TPCNtuple (for *al.root files) or DelphiNanoAOD (for analysis)
+        # Most analysis uses the _ttree.root files from DelphiNanoAOD
+        input_dir = base / year / energy / "Data" / short_version / "TPCNtuple" / "251219"
+    else:
+        # MC: read from TPCNtuple directory
+        stream = cfg["stream"]
+        input_dir = base / year / energy / "MC" / short_version / "TPCNtuple" / stream / "251219"
+    
+    return str(input_dir)
 
 def build_patterns(nickname):
+    """
+    Legacy function for compatibility - returns old output directory structure.
+    Output directory stays the same (old EOS location).
+    """
+    load_config_if_needed()
     cfg = config[nickname]
     
     if cfg["type"] == "data":
         copy_dir = user_output_base / "collision_data" / cfg["version"] / cfg["energy"]
     else:
-        copy_dir = user_output_base / "simulation" / cfg["version"] / cfg["copy_energy"] / cfg["stream"]
+        energy = cfg.get("copy_energy") or cfg["energy"]
+        copy_dir = user_output_base / "simulation" / cfg["version"] / energy / cfg["stream"]
 
     return str(copy_dir)
 
@@ -33,35 +91,19 @@ executable = "create_response_matrices_thrust.py"
 
 nicknames = [
     "sh_kk2f4146qqpy_e91.25_c94_2l_c2",
-    "sh_kk2f4146qqardcy_e91.25_r94_2l_c2",
-    "Pythia8_94c",
-    "Pythia8_Dire_94c",
+#    "sh_kk2f4146qqardcy_e91.25_r94_2l_c2",
+#    "Pythia8_94c",
+#    "Pythia8_Dire_94c",
     "sh_kk2f4146qqpy_e91.25_c95_1l_d2",
-    "Pythia8_95d",
-    "Pythia8_Dire_95d",
-    #"short94_c2",
-    #"short95_d2"
+#    "Pythia8_95d",
+#    "Pythia8_Dire_95d",
+#    "short94_c2",
+#    "short95_d2"
 #    "ALEPHMC"
 #    "ALEPH"
 ]
 
-#nicknames = [
-    #"short94_c2"
-#    "short95_d2"
-#    "Pythia8_94c"
-#]
-
-#nicknames = [
-    #"xs_kk2f4144tthl_e201.6_c99_1l_e1",
-    #"xs_wphact211ncgg_e201.6_m80.4_c99_1l_e1",
-    #"xs_wphact21nc4f_e201.6_m80.4_l99_1l_e1",
-#    "xs_wphact24cc_e201.6_m80.4_c99_1l_e1",
-    #"xs_kk2f4143qq_e201.6_l99_1l_e1",
-#]
-
 version = "v40"
-
-config = load_config()
 
 # Loop through each nickname
 for nickname in nicknames:
@@ -69,35 +111,17 @@ for nickname in nicknames:
     print(f"Processing nickname: {nickname}")
     print(f"{'='*60}")
     
+    # Handle special legacy cases (ALEPH only) that don't use new structure
     if nickname == "ALEPHMC":
         PATTERN = "/eos/user/z/zhangj/ALEPH/SamplesLEP1/ALEPHMC/LEP1MC1994_recons_aftercut-0*.root"
         JobFlavour = "workday"
     elif nickname == "ALEPH":
         PATTERN = "/eos/user/z/zhangj/ALEPH/SamplesLEP1/ALEPH/LEP1Data1994P*part*"
         JobFlavour = "longlunch"
-    elif nickname == "oldDELPHI":
-        PATTERN  = "/eos/user/z/zhangj/DELPHI/simulation/1994_v2/qqps/qqps*.sdst.root"
-        JobFlavour = "espresso"
-    elif nickname == "Pythia8_94c":
-        PATTERN = "/eos/user/z/zhangj/DELPHI/simulation/v94c/91.25/pythia8/nanoaod_simana_job_*.sdst.root"
-        JobFlavour = "espresso"
-    elif nickname == "Pythia8_Dire_94c":
-        PATTERN = "/eos/user/z/zhangj/DELPHI/simulation/v94c/91.25/pythia8_dire/nanoaod_simana_job_*.sdst.root"
-        JobFlavour = "espresso"
-    elif nickname == "Pythia8_95d":
-        PATTERN = "/eos/user/z/zhangj/DELPHI/simulation/v95d/91.25/pythia8/nanoaod_simana_job_*.sdst.root"
-        JobFlavour = "espresso"
-    elif nickname == "Pythia8_Dire_95d":
-        PATTERN = "/eos/user/z/zhangj/DELPHI/simulation/v95d/91.25/pythia8_dire/nanoaod_simana_job_*.sdst.root"
-        JobFlavour = "espresso"
-    elif nickname == "sh_zgpy_b94_2l_c2" or nickname == "sh_qqps_k94_2l_c2":
-        PATTERN = build_patterns(nickname)+"/nanoaod_*al.root"
-        JobFlavour = "espresso"
-    elif nickname == "short94_c2" or nickname == "short95_d2":
-        PATTERN = build_patterns(nickname)+"/nanoaod_*al.root"
-        JobFlavour = "longlunch"
+    # All DELPHI samples use new structure with same pattern
     else:
-        PATTERN = build_patterns(nickname)+"/nanoaod_*sdst.root"
+        input_dir = build_input_pattern(nickname)
+        PATTERN = f"{input_dir}/nanoaod_*.root"
         JobFlavour = "longlunch"
 
     print(f"Pattern: {PATTERN}")
@@ -120,7 +144,18 @@ for nickname in nicknames:
         if isGen:
             env["ana"]+="gen"
         
-        subprocess.run(["condor_submit", "condor/condor.sub"], env=env, check=True)
+        #subprocess.run(["condor_submit", "condor/condor.sub"], env=env, check=True)
+        # Retry logic for transient HTCondor errors
+        max_retries = 3
+        for attempt in range(max_retries):
+            result = subprocess.run(["condor_submit", "condor/condor.sub"], env=env)
+            if result.returncode == 0:
+                break
+            if attempt < max_retries - 1:
+                print(f"  ⚠️ HTCondor error, retry {attempt+1}/{max_retries}...")
+                time.sleep(2)
+            else:
+                print(f"  ❌ Failed to submit {file_name} after {max_retries} attempts, skipping...")
     
     print(f"Completed {len(file_list)} submissions for {nickname}")
 

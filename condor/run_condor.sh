@@ -1,11 +1,19 @@
 #!/bin/bash
 
+# Read positional arguments
+INPUT_FILE="$1"
+OUTPUT_FILE="$2"
+TPCNTUPLE_DIR_PATH="$3"
+DELPHINANOAOD_DIR_PATH="$4"
+DATA_OR_MC="$5"
+
 # Print the arguments
 echo "Arguments passed to this script:"
-echo "  input file  : $1"
-echo "  output file : $2"
-echo "  move to     : $3"
-echo "  data or mc  : $4"
+echo "  input file         : $INPUT_FILE"
+echo "  output file        : $OUTPUT_FILE"
+echo "  TPCNtuple dir      : $TPCNTUPLE_DIR_PATH"
+echo "  DelphiNanoAOD dir  : $DELPHINANOAOD_DIR_PATH"
+echo "  data or mc         : $DATA_OR_MC"
 
 # Create a temporary working directory
 WORKDIR=$(mktemp -d /tmp/delphi_job_XXXXXX)
@@ -24,23 +32,27 @@ source /cvmfs/delphi.cern.ch/setup.sh
 source /cvmfs/sft.cern.ch/lcg/app/releases/ROOT/6.34.04/x86_64-almalinux9.5-gcc115-opt/bin/thisroot.sh
 
 # Write unique PDLINPUT file
-echo "FILE=$1" > "${2}_dummy"
+echo "FILE=$INPUT_FILE" > "${OUTPUT_FILE}_dummy"
 
 # Run nanoAOD producer
-if [ "$4" = "MC" ]; then
-    delphi-nanoaod -P "${2}_dummy" --mc --config delphi-nanoaod.yaml --output "$2"
+if [ "$DATA_OR_MC" = "MC" ]; then
+    delphi-nanoaod -P "${OUTPUT_FILE}_dummy" --mc --config delphi-nanoaod.yaml --output "$OUTPUT_FILE"
 else
-    delphi-nanoaod -P "${2}_dummy" --config delphi-nanoaod.yaml --output "$2"
+    delphi-nanoaod -P "${OUTPUT_FILE}_dummy" --config delphi-nanoaod.yaml --output "$OUTPUT_FILE"
 fi
 
 # Run treefy step
-root -q -b -l "treefy.C+(\"$2\")"
+root -q -b -l "treefy.C+(\"$OUTPUT_FILE\")"
 
-# Move the output ROOT file to desired location
-tpc="$2"
+# Route output files based on their names
+tpc="$OUTPUT_FILE"
 nanotree="${tpc/.root/_ttree.root}"
 
-mv "$tpc" "$3"
-mv "$nanotree" "$3"
+# Move files to appropriate directories
+echo "Moving TPCNtuple file to: $TPCNTUPLE_DIR_PATH"
+mv "$tpc" "$TPCNTUPLE_DIR_PATH/"
 
+echo "Moving DelphiNanoAOD file to: $DELPHINANOAOD_DIR_PATH"
+mv "$nanotree" "$DELPHINANOAOD_DIR_PATH/"
 
+echo "Job completed successfully!"

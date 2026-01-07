@@ -10,7 +10,49 @@ import re
 import yaml
 
 opendata_dir = Path("/eos/opendata/delphi")
-user_output_base = Path("/eos/user/z/zhangj/DELPHI")
+
+def extract_version_info(version_str):
+    """
+    Extract year and short version from version string.
+    Example: "v94c" -> year="1994", short_version="94c"
+    """
+    # Remove 'v' prefix
+    short_version = version_str.lstrip('v')
+    
+    # Extract year prefix (first 2 digits)
+    year_prefix = short_version[:2]
+    
+    # Map to full year
+    year = "19" + year_prefix
+    
+    return year, short_version
+
+def build_output_paths(cfg, date="251219"):
+    """
+    Build output paths for both TPCNtuple and DelphiNanoAOD.
+    Returns: (tpcntuple_dir, delphinanoaod_dir, TYPE)
+    """
+    base = Path("/eos/experiment/eealliance/Samples/DELPHI")
+    
+    # Extract version info
+    year, short_version = extract_version_info(cfg["version"])
+    
+    # Use copy_energy if exists, otherwise use energy
+    energy = cfg.get("copy_energy") or cfg["energy"]
+    
+    if cfg["type"] == "data":
+        # Data path (no stream subfolder)
+        tpcntuple_dir = base / year / energy / "Data" / short_version / "TPCNtuple" / date
+        delphinanoaod_dir = base / year / energy / "Data" / short_version / "DelphiNanoAOD" / date
+        TYPE = "DATA"
+    else:
+        # MC path (with stream subfolder)
+        stream = cfg["stream"]
+        tpcntuple_dir = base / year / energy / "MC" / short_version / "TPCNtuple" / stream / date
+        delphinanoaod_dir = base / year / energy / "MC" / short_version / "DelphiNanoAOD" / stream / date
+        TYPE = "MC"
+    
+    return str(tpcntuple_dir), str(delphinanoaod_dir), TYPE
 
 def build_patterns(nickname):
     cfg = config[nickname]
@@ -20,8 +62,6 @@ def build_patterns(nickname):
             str(opendata_dir / "collision-data" / subdir / "**" / f"*{cfg['extension']}")
             for subdir in cfg["subdirs"]
         ]
-        copy_dir = user_output_base / "collision_data" / cfg["version"] / cfg["energy"]
-        TYPE = "DATA"
     elif cfg["type"] == "sim" and "subdirs" in cfg:
         # Handle hybrid case: sim type but with data-like search path
         patterns = []
@@ -33,7 +73,6 @@ def build_patterns(nickname):
                 file_pattern = subdir_config["pattern"]
                 
                 # Check if pattern contains numeric range like [241-252]
-                import re
                 range_match = re.search(r'\[(\d+)-(\d+)\]', file_pattern)
                 if range_match:
                     start, end = map(int, range_match.groups())
@@ -54,21 +93,13 @@ def build_patterns(nickname):
             for subdir in cfg["subdirs"]:
                 pattern = str(opendata_dir / "collision-data" / subdir / f"*{cfg['extension']}")
                 patterns.append(pattern)
-        if cfg["copy_energy"]:
-            copy_dir = user_output_base / "simulation" / cfg["version"] / cfg["copy_energy"] / cfg["stream"]
-        else:
-            copy_dir = user_output_base / "simulation" / cfg["version"] / cfg["energy"] / cfg["stream"]
-        TYPE = "MC"
-    elif cfg["stream"] == "pythia8":
-        pattern = f"/eos/user/z/zhangj/DELPHI/simulation/{cfg['version']}/{cfg['energy']}/pythia8_sdst/simana*sdst"
+    elif cfg["stream"] in ["pythia8", "pythia8_dire"]:
+        # Pythia8 files are in the new EOS structure under SDST
+        year, short_version = extract_version_info(cfg["version"])
+        energy = cfg.get("copy_energy") or cfg["energy"]
+        base = Path("/eos/experiment/eealliance/Samples/DELPHI")
+        pattern = str(base / year / energy / "MC" / short_version / "SDST" / cfg["stream"] / "251219" / "simana*sdst")
         patterns = [pattern]
-        copy_dir = user_output_base / "simulation" / cfg["version"] / cfg["energy"] / cfg["stream"]
-        TYPE = "MC"
-    elif cfg["stream"] == "pythia8_dire":
-        pattern = f"/eos/user/z/zhangj/DELPHI/simulation/{cfg['version']}/{cfg['energy']}/pythia8_dire_sdst/simana*sdst"
-        patterns = [pattern]
-        copy_dir = user_output_base / "simulation" / cfg["version"] / cfg["energy"] / cfg["stream"]
-        TYPE = "MC"
     else:
         # Original sim type logic
         pattern = str(
@@ -76,14 +107,12 @@ def build_patterns(nickname):
             "**" / f"{cfg['stream']}_*{cfg['energy']}*{cfg['extension']}"
         )
         patterns = [pattern]
-        if cfg["copy_energy"]:
-            copy_dir = user_output_base / "simulation" / cfg["version"] / cfg["copy_energy"] / cfg["stream"]
-        else:
-            copy_dir = user_output_base / "simulation" / cfg["version"] / cfg["energy"] / cfg["stream"]
-        TYPE = "MC"
+    
+    # Build output paths using new function
+    tpcntuple_dir, delphinanoaod_dir, TYPE = build_output_paths(cfg)
     
     print("Search pattern:", patterns)
-    return patterns, str(copy_dir), TYPE
+    return patterns, tpcntuple_dir, delphinanoaod_dir, TYPE
 
 def find_matches(patterns):
     matches = []
@@ -174,27 +203,33 @@ if __name__ == "__main__":
     #nickname = "xs_kk2f4144tthl_e199.5_c99_1l_e1"
     #nickname = "xs_kk2f4144tthl_e201.6_c99_1l_e1"
     
-    patterns, copy_dir, run_type = build_patterns(nickname)
+    patterns, tpcntuple_dir, delphinanoaod_dir, run_type = build_patterns(nickname)
     matched_files = find_matches(patterns)
-
-    copy_dir = copy_dir
 
     print(f"Found {len(matched_files)} files for '{nickname}':")
     for f in matched_files:
         print(f)
-    print(f"Copy directory: {copy_dir}")
+    print(f"TPCNtuple directory: {tpcntuple_dir}")
+    print(f"DelphiNanoAOD directory: {delphinanoaod_dir}")
 
-    os.makedirs(copy_dir, exist_ok=True)    # Pause for manual check
+    # Create both output directories
+    os.makedirs(tpcntuple_dir, exist_ok=True)
+    os.makedirs(delphinanoaod_dir, exist_ok=True)
+
     input("👉 Press Enter to start job submission...")
     
     for f in matched_files:
         fname = os.path.basename(f)
         output = f"nanoaod_{fname}.root"
 
-        output_path = os.path.join(copy_dir, output)
-
-        if file_should_be_skipped(output_path, min_bytes, max_days):
-            print(f"⚠️ Skipping {output}")
+        # Check if either output file exists and should be skipped
+        tpcntuple_path = os.path.join(tpcntuple_dir, output)
+        ttree_output = output.replace(".root", "_ttree.root")
+        delphinanoaod_path = os.path.join(delphinanoaod_dir, ttree_output)
+        
+        if (file_should_be_skipped(tpcntuple_path, min_bytes, max_days) and 
+            file_should_be_skipped(delphinanoaod_path, min_bytes, max_days)):
+            print(f"⚠️ Skipping {output} (both outputs exist)")
             continue
 
         # To avoid ran out of disk space on lxplus
@@ -208,9 +243,12 @@ if __name__ == "__main__":
         env = os.environ.copy()
         env["IN"] = f
         env["OUT"] = output
-        env["COPYDIR"] = copy_dir
+        env["TPCNTUPLE_DIR"] = tpcntuple_dir
+        env["DELPHINANOAOD_DIR"] = delphinanoaod_dir
         env["ISMC"] = run_type
 
-        print(f, output, copy_dir)
+        print(f, output)
+        print(f"  -> TPCNtuple: {tpcntuple_dir}")
+        print(f"  -> DelphiNanoAOD: {delphinanoaod_dir}")
 
         subprocess.run(["condor_submit", "condor/condor.sub"], env=env)

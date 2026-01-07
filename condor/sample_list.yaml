@@ -4,7 +4,7 @@ sh_qqps_e91.25_c94_2l_c2:
   origin: cern
   version: v94c
   energy: "91.25"
-  copy_energy: "91.25"
+  copy_energy: "91.2"
   extension: .sdst
 
 short94_c2:
@@ -12,6 +12,7 @@ short94_c2:
   subdirs: [Y13709, Y13710]
   version: v94c
   energy: "91.25"
+  copy_energy: "91.2"
   extension: .al
 
 sh_kk2f4146qqpy_e91.25_c94_2l_c2:
@@ -20,7 +21,7 @@ sh_kk2f4146qqpy_e91.25_c94_2l_c2:
   origin: lyon
   version: v94c
   energy: "91.25"
-  copy_energy: "91.25"
+  copy_energy: "91.2"
   extension: .sdst
 
 sh_kk2f4146qqpydcy_e91.25_c94_2l_c2:
@@ -29,7 +30,7 @@ sh_kk2f4146qqpydcy_e91.25_c94_2l_c2:
   origin: cern
   version: v94c
   energy: "91.25"
-  copy_energy: "91.25"
+  copy_energy: "91.2"
   extension: .sdst
 
 sh_kk2f4146qqardcy_e91.25_r94_2l_c2:
@@ -38,7 +39,7 @@ sh_kk2f4146qqardcy_e91.25_r94_2l_c2:
   origin: ral
   version: v94c
   energy: "91.25"
-  copy_energy: "91.25"
+  copy_energy: "91.2"
   extension: .sdst
 
 sh_apacic105_e91.25_w94_2l_c2:
@@ -47,7 +48,7 @@ sh_apacic105_e91.25_w94_2l_c2:
   origin: wupp
   version: v94c
   energy: "91.25"
-  copy_energy: "91.25"
+  copy_energy: "91.2"
   extension: .sdst
 
 sh_zgpy_b94_2l_c2:
@@ -59,7 +60,7 @@ sh_zgpy_b94_2l_c2:
   stream: zgpy  
   version: v94c        
   energy: "91.25"      
-  copy_energy: "91.25" 
+  copy_energy: "91.2" 
   extension: .al
 
 sh_pythia8_94c:
@@ -67,7 +68,7 @@ sh_pythia8_94c:
   stream: pythia8  
   version: v94c        
   energy: "91.25"      
-  copy_energy: "91.25" 
+  copy_energy: "91.2" 
   extension: .sdst
 
 sh_pythia8_dire_94c:
@@ -75,7 +76,7 @@ sh_pythia8_dire_94c:
   stream: pythia8_dire  
   version: v94c        
   energy: "91.25"      
-  copy_energy: "91.25" 
+  copy_energy: "91.2" 
   extension: .sdst
 
 sh_qqps_k94_2l_c2:
@@ -93,7 +94,7 @@ sh_qqps_k94_2l_c2:
   stream: qqps
   version: v94c        
   energy: "91.25"      
-  copy_energy: "91.25" 
+  copy_energy: "91.2" 
   extension: .al
 
 sh_kk2f4146tthl_e91.25_c94_2l_c2:
@@ -102,14 +103,15 @@ sh_kk2f4146tthl_e91.25_c94_2l_c2:
   origin: cern
   version: v94c
   energy: "91.25"
-  copy_energy: "91.25"
+  copy_energy: "91.2"
   extension: .sdst
 
 short95_d2:
   type: data
   subdirs: [Y13716]
   version: v95d        
-  energy: "91.25"      
+  energy: "91.25"    
+  copy_energy: "91.2"  
   extension: .al
 
 sh_kk2f4146qqpy_e91.25_c95_1l_d2:
@@ -118,7 +120,7 @@ sh_kk2f4146qqpy_e91.25_c95_1l_d2:
   origin: cern
   version: v95d
   energy: "91.25"
-  copy_energy: "91.25"
+  copy_energy: "91.2"
   extension: .sdst
 
 sh_pythia8_95d:
@@ -126,7 +128,7 @@ sh_pythia8_95d:
   stream: pythia8  
   version: v95d        
   energy: "91.25"      
-  copy_energy: "91.25" 
+  copy_energy: "91.2" 
   extension: .sdst
 
 sh_pythia8_dire_95d:
@@ -134,7 +136,7 @@ sh_pythia8_dire_95d:
   stream: pythia8_dire  
   version: v95d        
   energy: "91.25"      
-  copy_energy: "91.25" 
+  copy_energy: "91.2" 
   extension: .sdst
 
 xsdst99_e192_e1:
