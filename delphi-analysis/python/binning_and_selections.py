@@ -53,8 +53,123 @@ tbins2 = np.array(tbins2, dtype=np.float64)
 tbinsDelphi = np.array(tbinsDelphi, dtype=np.float64)
 logtbins2 = np.array(logtbins2, dtype=np.float64)
 
+def conversion_veto_mask(eta, phi, charge, pwflag,
+                         conversion_deta, conversion_dphi):
+    """
+    Parameters
+    ----------
+    eta, phi, charge, pwflag : array-like, shape (N,)
+        Per-track arrays.
+        - pwflag==2 marks an electron.
+    conversion_deta : float
+        Maximum |Δη| between candidate and its partner.
+    conversion_dphi : float
+        Maximum |Δφ| between candidate and its partner.
+    
+    Returns
+    -------
+    mask : ndarray of bool, shape (N,)
+        True for tracks that are NOT conversion electrons,
+        False for conversions.
+    """
+    eta   = np.asarray(eta)
+    phi   = np.asarray(phi)
+    charge= np.asarray(charge)
+    pw    = np.asarray(pwflag)
+    N     = eta.size
+
+    # Build an array of “previous” indices,
+    # with index 0 peeking at 1 so we don’t run off the front:
+    prev = np.arange(N) - 1
+    prev[0] = 1
+
+    # 1) both must be electrons (pwflag==2)
+    both_elec = (pw == 2) & (pw[prev] == 2)
+    # 2) opposite charge
+    opp_charge = (charge == -charge[prev])
+    # 3) |Δη| small
+    deta = np.abs(eta - eta[prev])
+    pass_deta  = (deta <= conversion_deta)
+    # 4) |Δφ| small, accounting for periodicity
+    dphi = np.arccos(np.cos(phi - phi[prev]))
+    pass_dphi  = (dphi <= conversion_dphi)
+
+    # conversion if all four conditions hold
+    is_conv = both_elec & opp_charge & pass_deta & pass_dphi
+
+    # now propagate back onto prev[i]
+    conv_prev = np.zeros_like(is_conv, dtype=bool)
+    conv_prev[prev] = is_conv
+
+    # any track that is_conv or conv_prev is a conversion
+    conv_any = is_conv | conv_prev
+
+    # final mask: True = keep (not conversion), False = drop
+    return ~conv_any
+
+def conversion_veto_mask_bypid(eta, phi, charge, pwflag,
+                               conversion_deta, conversion_dphi):
+    """
+    Parameters
+    ----------
+    eta, phi, charge, pwflag : array-like, shape (N,)
+        Per-track arrays.
+        - pwflag==2 marks an electron.
+    conversion_deta : float
+        Maximum |Δη| between candidate and its partner.
+    conversion_dphi : float
+        Maximum |Δφ| between candidate and its partner.
+    
+    Returns
+    -------
+    mask : ndarray of bool, shape (N,)
+        True for tracks that are NOT conversion electrons,
+        False for conversions.
+    """
+    eta   = np.asarray(eta)
+    phi   = np.asarray(phi)
+    charge= np.asarray(charge)
+    pw    = abs(np.asarray(pwflag))
+    N     = eta.size
+ 
+    # Build an array of “previous” indices,
+    # with index 0 peeking at 1 so we don’t run off the front:
+    prev = np.arange(N) - 1
+    prev[0] = 1
+
+    # 1) both must be electrons (pwflag==2)
+    both_elec = (pw == 11) & (pw[prev] == 11)
+    # 2) opposite charge
+    opp_charge = (charge == -charge[prev])
+    # 3) |Δη| small
+    deta = np.abs(eta - eta[prev])
+    pass_deta  = (deta <= conversion_deta)
+    # 4) |Δφ| small, accounting for periodicity
+    dphi = np.arccos(np.cos(phi - phi[prev]))
+    pass_dphi  = (dphi <= conversion_dphi)
+
+    # conversion if all four conditions hold
+    is_conv = both_elec & opp_charge & pass_deta & pass_dphi
+
+    # now propagate back onto prev[i]
+    conv_prev = np.zeros_like(is_conv, dtype=bool)
+    conv_prev[prev] = is_conv
+
+    # any track that is_conv or conv_prev is a conversion
+    conv_any = is_conv | conv_prev
+
+    # final mask: True = keep (not conversion), False = drop
+    return ~conv_any
+
 def apply_track_selection_delphi(px=None, py=None, pz=None, m=None, q=None, th=None, pt=None, eta=None, phi=None, d0=None, z0=None, pwflag=None, hp=None, 
-                                 px_gen=None, py_gen=None, pz_gen=None, m_gen=None, q_gen=None, th_gen=None, pt_gen=None, eta_gen=None, phi_gen=None, pwflag_gen=None, hp_gen=None):
+                                 px_gen=None, py_gen=None, pz_gen=None, m_gen=None, q_gen=None, th_gen=None, pt_gen=None, eta_gen=None, phi_gen=None, pwflag_gen=None, hp_gen=None,
+                                 charged_pt_min=0.4,
+                                 charged_d0_max=4.0,
+                                 charged_z0sin_max=4.0,
+                                 neutral_e_min=0.5,
+                                 neutral_e_max=50.0,
+                                 theta_min_deg=20.0,
+                                 theta_max_deg=160.0):
     """
     Apply track selection criteria for reconstructed and/or generated particles.
     
@@ -64,6 +179,20 @@ def apply_track_selection_delphi(px=None, py=None, pz=None, m=None, q=None, th=N
         Reconstructed particle properties
     px_gen, py_gen, pz_gen, m_gen, q_gen, th_gen, pt_gen, eta_gen, phi_gen, pwflag_gen, hp_gen : arrays, optional
         Generated particle properties
+    charged_pt_min : float, optional
+        Minimum pT for charged particles (GeV). Default: 0.4
+    charged_d0_max : float, optional
+        Maximum |d0| for charged particles (cm). Default: 4.0
+    charged_z0sin_max : float, optional
+        Maximum |z0*sin(theta)| for charged particles (cm). Default: 4.0
+    neutral_e_min : float, optional
+        Minimum energy for neutral particles (GeV). Default: 0.5
+    neutral_e_max : float, optional
+        Maximum energy for neutral particles (GeV). Default: 50.0
+    theta_min_deg : float, optional
+        Minimum polar angle (degrees). Default: 20.0
+    theta_max_deg : float, optional
+        Maximum polar angle (degrees). Default: 160.0
     
     Returns:
     --------
@@ -87,9 +216,6 @@ def apply_track_selection_delphi(px=None, py=None, pz=None, m=None, q=None, th=N
     
     if not has_reco and not has_gen:
         raise ValueError("Must provide either reconstructed or generated level data (or both)")
-
-    neutral_cut = 0.5
-    neutral_upper_cut = 50
     
     # ================================================================
     # RECONSTRUCTED LEVEL SELECTION
@@ -97,22 +223,21 @@ def apply_track_selection_delphi(px=None, py=None, pz=None, m=None, q=None, th=N
     if has_reco:
         # Basic kinematic cuts
         abs_c = np.abs(q)
-        angle_accept = (th > np.deg2rad(20)) & (th < np.deg2rad(160))
+        angle_accept = (th > np.deg2rad(theta_min_deg)) & (th < np.deg2rad(theta_max_deg))
         
         # Track quality cuts for reconstructed particles
         sin_th = np.sin(th)
         abs_d0 = np.abs(d0)
         abs_z0sin = np.abs(z0 * sin_th)
 
-        e=np.sqrt(px**2 + py**2 + pz**2 + m**2)
+        e = np.sqrt(px**2 + py**2 + pz**2 + m**2)
         
         # Charged particle selection (reconstructed)
-        core_charged = (abs_c > 0.1) & (pt > 0.4) & (abs_d0 < 4) & (abs_z0sin < 4)
+        core_charged = (abs_c > 0.1) & (pt > charged_pt_min) & (abs_d0 < charged_d0_max) & (abs_z0sin < charged_z0sin_max)
         sel_c = core_charged & angle_accept
         
         # Neutral particle selection (reconstructed)
-        #core_neutral = (abs_c < 0.1) & (e > neutral_cut)
-        core_neutral = (abs_c < 0.1) & (e > neutral_cut) & (e < neutral_upper_cut)
+        core_neutral = (abs_c < 0.1) & (e > neutral_e_min) & (e < neutral_e_max)
         sel_n = core_neutral & angle_accept
         
         # Combined selection (charged + neutral, reconstructed)
@@ -128,17 +253,17 @@ def apply_track_selection_delphi(px=None, py=None, pz=None, m=None, q=None, th=N
     if has_gen:
         # Basic kinematic cuts for generated particles
         abs_c_gen = np.abs(q_gen)
-        angle_accept_gen = (th_gen > np.deg2rad(20)) & (th_gen < np.deg2rad(160))
+        angle_accept_gen = (th_gen > np.deg2rad(theta_min_deg)) & (th_gen < np.deg2rad(theta_max_deg))
 
         e_gen = np.sqrt(px_gen**2 + py_gen**2 + pz_gen**2 + m_gen**2)
         
         # Charged particle selection (generated)
         # Note: No track quality cuts (d0, z0) at generator level
-        core_charged_gen = (abs_c_gen > 0.1) & (pt_gen > 0.4)
+        core_charged_gen = (abs_c_gen > 0.1) & (pt_gen > charged_pt_min)
         sel_c_gen = core_charged_gen & angle_accept_gen
         
         # Neutral particle selection (generated)
-        core_neutral_gen = (abs_c_gen < 0.1) & (e_gen > neutral_cut) & (e_gen < neutral_upper_cut)
+        core_neutral_gen = (abs_c_gen < 0.1) & (e_gen > neutral_e_min) & (e_gen < neutral_e_max)
         sel_n_gen = core_neutral_gen & angle_accept_gen
         
         # Combined selection (charged + neutral, generated)

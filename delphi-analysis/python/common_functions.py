@@ -78,114 +78,6 @@ def calcAngle(n1, n2):
     theta = np.arccos(cos_theta)
     return theta
 
-def conversion_veto_mask(eta, phi, charge, pwflag,
-                         conversion_deta, conversion_dphi):
-    """
-    Parameters
-    ----------
-    eta, phi, charge, pwflag : array-like, shape (N,)
-        Per-track arrays.
-        - pwflag==2 marks an electron.
-    conversion_deta : float
-        Maximum |Δη| between candidate and its partner.
-    conversion_dphi : float
-        Maximum |Δφ| between candidate and its partner.
-    
-    Returns
-    -------
-    mask : ndarray of bool, shape (N,)
-        True for tracks that are NOT conversion electrons,
-        False for conversions.
-    """
-    eta   = np.asarray(eta)
-    phi   = np.asarray(phi)
-    charge= np.asarray(charge)
-    pw    = np.asarray(pwflag)
-    N     = eta.size
-
-    # Build an array of “previous” indices,
-    # with index 0 peeking at 1 so we don’t run off the front:
-    prev = np.arange(N) - 1
-    prev[0] = 1
-
-    # 1) both must be electrons (pwflag==2)
-    both_elec = (pw == 2) & (pw[prev] == 2)
-    # 2) opposite charge
-    opp_charge = (charge == -charge[prev])
-    # 3) |Δη| small
-    deta = np.abs(eta - eta[prev])
-    pass_deta  = (deta <= conversion_deta)
-    # 4) |Δφ| small, accounting for periodicity
-    dphi = np.arccos(np.cos(phi - phi[prev]))
-    pass_dphi  = (dphi <= conversion_dphi)
-
-    # conversion if all four conditions hold
-    is_conv = both_elec & opp_charge & pass_deta & pass_dphi
-
-    # now propagate back onto prev[i]
-    conv_prev = np.zeros_like(is_conv, dtype=bool)
-    conv_prev[prev] = is_conv
-
-    # any track that is_conv or conv_prev is a conversion
-    conv_any = is_conv | conv_prev
-
-    # final mask: True = keep (not conversion), False = drop
-    return ~conv_any
-
-def conversion_veto_mask_bypid(eta, phi, charge, pwflag,
-                               conversion_deta, conversion_dphi):
-    """
-    Parameters
-    ----------
-    eta, phi, charge, pwflag : array-like, shape (N,)
-        Per-track arrays.
-        - pwflag==2 marks an electron.
-    conversion_deta : float
-        Maximum |Δη| between candidate and its partner.
-    conversion_dphi : float
-        Maximum |Δφ| between candidate and its partner.
-    
-    Returns
-    -------
-    mask : ndarray of bool, shape (N,)
-        True for tracks that are NOT conversion electrons,
-        False for conversions.
-    """
-    eta   = np.asarray(eta)
-    phi   = np.asarray(phi)
-    charge= np.asarray(charge)
-    pw    = abs(np.asarray(pwflag))
-    N     = eta.size
- 
-    # Build an array of “previous” indices,
-    # with index 0 peeking at 1 so we don’t run off the front:
-    prev = np.arange(N) - 1
-    prev[0] = 1
-
-    # 1) both must be electrons (pwflag==2)
-    both_elec = (pw == 11) & (pw[prev] == 11)
-    # 2) opposite charge
-    opp_charge = (charge == -charge[prev])
-    # 3) |Δη| small
-    deta = np.abs(eta - eta[prev])
-    pass_deta  = (deta <= conversion_deta)
-    # 4) |Δφ| small, accounting for periodicity
-    dphi = np.arccos(np.cos(phi - phi[prev]))
-    pass_dphi  = (dphi <= conversion_dphi)
-
-    # conversion if all four conditions hold
-    is_conv = both_elec & opp_charge & pass_deta & pass_dphi
-
-    # now propagate back onto prev[i]
-    conv_prev = np.zeros_like(is_conv, dtype=bool)
-    conv_prev[prev] = is_conv
-
-    # any track that is_conv or conv_prev is a conversion
-    conv_any = is_conv | conv_prev
-
-    # final mask: True = keep (not conversion), False = drop
-    return ~conv_any
-
 def missing_p(p3: np.ndarray) -> np.ndarray:
     """
     Missing 3-momentum vector  (−Σ p_i).
@@ -492,8 +384,9 @@ def thrust_axis_fast_optimized(p3: np.ndarray,
         p3 = np.vstack((p3, -p3.sum(axis=0, keepdims=True)))
     
     n = len(p3)
-    if n < 2:
-        return np.zeros(3, dtype=np.float32), 0.0
+    
+    if n < 4:
+        return thrust_belle_std(p3, eps)
     
     # Convert to float32 for better performance
     p3 = p3.astype(np.float32, copy=False)
@@ -954,6 +847,8 @@ def calculate_sphericity_with_fallback(px, py, pz):
     return result
 
 
+## I/O functions ##
+
 def OpenFile(file_in,iodir):
     """  file_in -- Input file name
          iodir   -- 'r' readonly  'r+' read+write """
@@ -983,6 +878,8 @@ def ReadFilesFromList(infile):
         x = ifile.readline()
 
     return filelist
+
+## Helpers for matching ##
 
 def match_angular(rec: P4Block, gen: P4Block, r):
 
@@ -1075,6 +972,8 @@ def match_correspondence_index(rec: P4Block, gen: P4Block, cat: str):
     
     return ireco, igen, imiss, ifake
 
+## Helpers for multi-d EEC calculation##
+
 def get_flat_bin_index(i_2d, j_2d, ny):
     """
     Convert 2D bin indices to flat bin index using same logic as unfold_2dflattern.py
@@ -1114,6 +1013,9 @@ def calculate_event_eec_histogram(pairs_data, template_hist, nx, ny):
             event_eec[flat_idx] += weight
     
     return event_eec
+
+
+## Helpers for systematic uncertainty evaluation ##
 
 def calc_scale_factor(pt, mode='none', shift=0.0, scale=1.0):
     """
