@@ -80,14 +80,34 @@ def build_patterns(nickname):
 
     return str(copy_dir)
 
+def is_mc_sample(nickname):
+    """
+    Determine if a sample is MC or data from config.
+    Returns True for MC, False for data.
+    """
+    # Handle special legacy cases not in config
+    if nickname == "ALEPHMC":
+        return True
+    elif nickname == "ALEPH":
+        return False
+    
+    # For all other samples, check config
+    load_config_if_needed()
+    if nickname not in config:
+        raise ValueError(f"Nickname '{nickname}' not found in config. Please add it to sample_list.yaml")
+    
+    return config[nickname]["type"] == "sim"
+
 isGen = False
 
+# Executable to run
 #executable = "analysis_correlation.py"
 #executable = "analysis_eec_lep2.py"
 #executable = "analysis_eec.py"
 #executable = "analysis_trk.py"
 #executable = "create_response_matrices.py"
-executable = "create_response_matrices_thrust.py"
+#executable = "create_response_matrices_thrust.py"
+executable = "analysis_thrust.py"
 
 nicknames = [
     "sh_kk2f4146qqpy_e91.25_c94_2l_c2",
@@ -97,19 +117,27 @@ nicknames = [
     "sh_kk2f4146qqpy_e91.25_c95_1l_d2",
 #    "Pythia8_95d",
 #    "Pythia8_Dire_95d",
-#    "short94_c2",
-#    "short95_d2"
+    "short94_c2",
+    "short95_d2"
 #    "ALEPHMC"
 #    "ALEPH"
 ]
 
-version = "v40"
+version = "v45"
+
+nickname = "sh_kk2f4146qqpy_e91.25_c94_2l_c2"
+is_mc = is_mc_sample(nickname)
+print(f"Is MC: {is_mc}")  # Should print True
 
 # Loop through each nickname
 for nickname in nicknames:
     print(f"\n{'='*60}")
     print(f"Processing nickname: {nickname}")
     print(f"{'='*60}")
+    
+    # Determine if this is MC
+    is_mc = is_mc_sample(nickname)
+    print(f"Sample type: {'MC' if is_mc else 'Data'}")
     
     # Handle special legacy cases (ALEPH only) that don't use new structure
     if nickname == "ALEPHMC":
@@ -143,6 +171,12 @@ for nickname in nicknames:
         env["ana"] += '_'+nickname
         if isGen:
             env["ana"]+="gen"
+        
+        # Add --is-mc flag for MC samples
+        if is_mc:
+            env["EXTRA_ARGS"] = "--is-mc"
+        else:
+            env["EXTRA_ARGS"] = ""
         
         #subprocess.run(["condor_submit", "condor/condor.sub"], env=env, check=True)
         # Retry logic for transient HTCondor errors
