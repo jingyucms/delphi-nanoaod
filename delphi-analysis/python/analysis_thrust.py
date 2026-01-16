@@ -117,6 +117,24 @@ SYSTEMATICS = {
 # HISTOGRAM CREATION FUNCTIONS
 # ============================================================================
 
+def create_counter_histogram():
+    """
+    Create counter histogram to track event counts for different thrust scenarios.
+    Bin 1: Total events processed
+    Bin 2: Events passing P-scheme all-particle event selection  
+    Bin 3: Events passing E-scheme all-particle event selection
+    Bin 4: Events passing P-scheme charged-only event selection
+    Bin 5: Events passing E-scheme charged-only event selection
+    """
+    counter = ROOT.TH1D('counter', 'Event Counter', 5, 0, 5)
+    counter.GetXaxis().SetBinLabel(1, 'Total Events')
+    counter.GetXaxis().SetBinLabel(2, 'P-scheme All')
+    counter.GetXaxis().SetBinLabel(3, 'E-scheme All')
+    counter.GetXaxis().SetBinLabel(4, 'P-scheme Charged')
+    counter.GetXaxis().SetBinLabel(5, 'E-scheme Charged')
+    return counter
+
+
 def create_gen_histograms():
     """
     Create gen-level histograms (before selection, no systematics).
@@ -418,7 +436,7 @@ def calculate_all_thrust_variants(px, py, pz, m, q, sel_c, sel_n, include_met=Tr
 # EVENT PROCESSING FUNCTIONS
 # ============================================================================
 
-def process_gen_level(tree_gen_before, tree_gen, event_idx, gen_hists):
+def process_gen_level(tree_gen_before, tree_gen, event_idx, gen_hists, counter):
     """
     Process generator-level particles (MC only).
     No event selection applied at gen level.
@@ -433,6 +451,8 @@ def process_gen_level(tree_gen_before, tree_gen, event_idx, gen_hists):
         Event index
     gen_hists : dict
         Dictionary of gen-level histograms
+    counter : ROOT.TH1D
+        Counter histogram
     
     Returns:
     --------
@@ -452,6 +472,8 @@ def process_gen_level(tree_gen_before, tree_gen, event_idx, gen_hists):
     pz = np.array(tree_gen_before.pz)
     m = np.array(tree_gen_before.mass)
     q = np.array(tree_gen_before.charge)
+    pt = np.array(tree_gen_before.pt)
+    th = np.array(tree_gen_before.theta)
     
     if len(px) == 0:
         return None
@@ -469,6 +491,8 @@ def process_gen_level(tree_gen_before, tree_gen, event_idx, gen_hists):
         pz = np.array(tree_gen.pz)
         m = np.array(tree_gen.mass)
         q = np.array(tree_gen.charge)
+        pt = np.array(tree_gen.pt)
+        th = np.array(tree_gen.theta)
         
         # Recalculate energy with new data
         e = np.sqrt(px**2 + py**2 + pz**2 + m**2)
@@ -476,34 +500,75 @@ def process_gen_level(tree_gen_before, tree_gen, event_idx, gen_hists):
     if len(px) == 0:
         return None
     
+    # ========================================================================
+    # PURE GEN HISTOGRAMS: No selection applied
+    # ========================================================================
     # Identify charged and neutral (no selection applied for gen)
     is_charged = np.abs(q) > 0.1
     sel_c_gen = is_charged
     sel_n_gen = ~is_charged
     
     # Calculate all thrust variants (no MET for gen level)
-    thrust_vals = calculate_all_thrust_variants(
+    thrust_vals_no_sel = calculate_all_thrust_variants(
         px, py, pz, m, q,
         sel_c_gen, sel_n_gen,
         include_met=False
     )
     
     # Fill gen histograms (no event selection at gen level)
-    gen_hists['Thrust_before2'].Fill(thrust_vals['thrust'])
-    gen_hists['Thrust_before_log2'].Fill(thrust_vals['thrust_log'])
-    gen_hists['Thrust_before2_Escheme'].Fill(thrust_vals['thrust_escheme'])
-    gen_hists['Thrust_before_log2_Escheme'].Fill(thrust_vals['thrust_log_escheme'])
+    gen_hists['Thrust_before2'].Fill(thrust_vals_no_sel['thrust'])
+    gen_hists['Thrust_before_log2'].Fill(thrust_vals_no_sel['thrust_log'])
+    gen_hists['Thrust_before2_Escheme'].Fill(thrust_vals_no_sel['thrust_escheme'])
+    gen_hists['Thrust_before_log2_Escheme'].Fill(thrust_vals_no_sel['thrust_log_escheme'])
     
-    gen_hists['ThrustC_before2'].Fill(thrust_vals['thrust_charged'])
-    gen_hists['ThrustC_before_log2'].Fill(thrust_vals['thrust_charged_log'])
-    gen_hists['ThrustC_before2_Escheme'].Fill(thrust_vals['thrust_charged_escheme'])
-    gen_hists['ThrustC_before_log2_Escheme'].Fill(thrust_vals['thrust_charged_log_escheme'])
+    gen_hists['ThrustC_before2'].Fill(thrust_vals_no_sel['thrust_charged'])
+    gen_hists['ThrustC_before_log2'].Fill(thrust_vals_no_sel['thrust_charged_log'])
+    gen_hists['ThrustC_before2_Escheme'].Fill(thrust_vals_no_sel['thrust_charged_escheme'])
+    gen_hists['ThrustC_before_log2_Escheme'].Fill(thrust_vals_no_sel['thrust_charged_log_escheme'])
     
-    return thrust_vals
+    # ========================================================================
+    # FOR RESPONSE MATRICES: Apply track selection
+    # ========================================================================
+    # Apply track selection at gen level (no d0, z0 cuts for gen)
+    gen_selection = apply_track_selection_delphi(
+        px_gen=px, py_gen=py, pz_gen=pz, m_gen=m, q_gen=q,
+        th_gen=th, pt_gen=pt,
+        charged_pt_min=0.4,
+        neutral_e_min=0.5,
+    )
+    
+    sel_gen_all = gen_selection['sel_gen']
+    
+    if not np.any(sel_gen_all):
+        # No particles pass selection - return None for response matrices
+        return None
+    
+    # Count this as a gen event passing selection (bin 3)
+    counter.Fill(2.5)
+    
+    # Extract selected gen particles
+    px_sel = px[sel_gen_all]
+    py_sel = py[sel_gen_all]
+    pz_sel = pz[sel_gen_all]
+    m_sel = m[sel_gen_all]
+    q_sel = q[sel_gen_all]
+    
+    # Need to re-map the selection masks to the selected arrays
+    sel_c_final = np.abs(q_sel) > 0.1  
+    sel_n_final = ~sel_c_final
+    
+    # Calculate thrust for selected gen particles (for response matrices)
+    thrust_vals_selected = calculate_all_thrust_variants(
+        px_sel, py_sel, pz_sel, m_sel, q_sel,
+        sel_c_final, sel_n_final,
+        include_met=False
+    )
+    
+    return thrust_vals_selected
 
 
 def process_reco_level(tree_reco, event_idx, systematics, reco_hists, response_matrices, 
-                       thrust_gen=None, is_mc=False):
+                       thrust_gen=None, is_mc=False, counter=None):
     """
     Process reco-level particles for all systematics.
     Applies event selection separately for each thrust variant.
@@ -524,6 +589,8 @@ def process_reco_level(tree_reco, event_idx, systematics, reco_hists, response_m
         Gen-level thrust values (for response matrix filling)
     is_mc : bool
         Whether this is MC (affects response matrix filling)
+    counter : ROOT.TH1D
+        Counter histogram
     """
     # Load event
     tree_reco.GetEntry(event_idx)
@@ -546,6 +613,9 @@ def process_reco_level(tree_reco, event_idx, systematics, reco_hists, response_m
     
     if len(px) == 0:
         return
+    
+    # Track if ANY systematic passed selection for this event
+    any_passed = False
     
     # Loop over all systematics
     for syst_name, syst_config in systematics.items():
@@ -578,8 +648,6 @@ def process_reco_level(tree_reco, event_idx, systematics, reco_hists, response_m
             neutral_e_min=syst_config.get('neutral_e_min', 0.5),
         )
         
-        sel_c = selection['sel_c']
-        sel_n = selection['sel_n']
         sel_all = selection['sel']
         
         if not np.any(sel_all):
@@ -592,8 +660,8 @@ def process_reco_level(tree_reco, event_idx, systematics, reco_hists, response_m
         m_sel = m_var[sel_all]
         q_sel = q_var[sel_all]
         
-        sel_c_final = sel_c[sel_all]
-        sel_n_final = sel_n[sel_all]
+        sel_c_final = np.abs(q_sel) > 0.1  
+        sel_n_final = ~sel_c_final          
         
         # Calculate event weight
         evt_weight = 1.0
@@ -613,6 +681,12 @@ def process_reco_level(tree_reco, event_idx, systematics, reco_hists, response_m
                       pz_sel[sel_c_final]**2 + m_sel[sel_c_final]**2)
         e_all = np.sqrt(px_sel**2 + py_sel**2 + pz_sel**2 + m_sel**2)
         
+        # Track if THIS systematic passed any event selection
+        passed_p_all = False
+        passed_e_all = False
+        passed_p_charged = False
+        passed_e_charged = False
+        
         # ===================================================================
         # P-SCHEME (ALL PARTICLES) EVENT SELECTION
         # ===================================================================
@@ -625,6 +699,7 @@ def process_reco_level(tree_reco, event_idx, systematics, reco_hists, response_m
         )
         
         if event_sel_p['pass_reco']:
+            passed_p_all = True
             # Fill P-scheme histograms
             reco_hists[syst_name][f'ThrustMissPNC2_{syst_name}'].Fill(thrust_vals['thrust'], evt_weight)
             reco_hists[syst_name][f'ThrustMissPNCLog2_{syst_name}'].Fill(thrust_vals['thrust_log'], evt_weight)
@@ -646,7 +721,11 @@ def process_reco_level(tree_reco, event_idx, systematics, reco_hists, response_m
             E_reco=E
         )
         
+        is_nominal = False
+        is_nominal = (syst_name == 'nominal')
+
         if event_sel_e['pass_reco']:
+            passed_e_all = True
             # Fill E-scheme histograms
             reco_hists[syst_name][f'ThrustMissPNC2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_escheme'], evt_weight)
             reco_hists[syst_name][f'ThrustMissPNCLog2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_log_escheme'], evt_weight)
@@ -669,6 +748,7 @@ def process_reco_level(tree_reco, event_idx, systematics, reco_hists, response_m
         )
         
         if event_sel_c['pass_reco']:
+            passed_p_charged = True
             # Fill charged P-scheme histograms
             reco_hists[syst_name][f'ThrustC2_{syst_name}'].Fill(thrust_vals['thrust_charged'], evt_weight)
             reco_hists[syst_name][f'ThrustCLog2_{syst_name}'].Fill(thrust_vals['thrust_charged_log'], evt_weight)
@@ -691,6 +771,7 @@ def process_reco_level(tree_reco, event_idx, systematics, reco_hists, response_m
         )
         
         if event_sel_ce['pass_reco']:
+            passed_e_charged = True
             # Fill charged E-scheme histograms
             reco_hists[syst_name][f'ThrustC2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_charged_escheme'], evt_weight)
             reco_hists[syst_name][f'ThrustCLog2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_charged_log_escheme'], evt_weight)
@@ -700,6 +781,17 @@ def process_reco_level(tree_reco, event_idx, systematics, reco_hists, response_m
                 matrices = response_matrices[syst_name]
                 matrices[f'response_thrustC2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_charged_escheme'], thrust_gen['thrust_charged_escheme'])
                 matrices[f'response_thrustC_log2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_charged_log_escheme'], thrust_gen['thrust_charged_log_escheme'])
+        
+        # After the systematic loop, fill counter for each scenario
+        if is_nominal:
+            if passed_p_all and counter is not None:
+                counter.Fill(1.5)  # Bin 2
+            if passed_e_all and counter is not None:
+                counter.Fill(2.5)  # Bin 3
+            if passed_p_charged and counter is not None:
+                counter.Fill(3.5)  # Bin 4
+            if passed_e_charged and counter is not None:
+                counter.Fill(4.5)  # Bin 5
 
 # ============================================================================
 # MAIN FUNCTION
@@ -762,6 +854,9 @@ def main():
     # Create histograms
     print("Creating histograms...")
     
+    # Create counter histogram
+    counter = create_counter_histogram()
+    
     gen_hists = None
     if args.is_mc:
         gen_hists = create_gen_histograms()
@@ -787,11 +882,14 @@ def main():
         if iEvt % 1000 == 0:
             print(f"  Processing event {iEvt}/{n_events}")
         
+        # Count total events (bin 1)
+        counter.Fill(0.5)
+        
         # Process gen level (MC only)
         thrust_gen = None
         if args.is_mc:
             thrust_gen = process_gen_level(
-                tree_gen_before, tree_gen, iEvt, gen_hists
+                tree_gen_before, tree_gen, iEvt, gen_hists, counter
             )
             # If gen processing failed (energy cut, etc.), skip this event
             if thrust_gen is None:
@@ -804,16 +902,26 @@ def main():
             reco_hists,
             response_matrices,
             thrust_gen=thrust_gen,
-            is_mc=args.is_mc
+            is_mc=args.is_mc,
+            counter=counter
         )
         
         n_processed += 1
     
-    print(f"Processed {n_processed} events")
+    print(f"\nProcessed {n_processed} events")
+    print(f"Event counts:")
+    print(f"  Total events: {int(counter.GetBinContent(1))}")
+    print(f"  Events passing selection: {int(counter.GetBinContent(2))}")
+    if args.is_mc:
+        print(f"  Gen events passing selection: {int(counter.GetBinContent(3))}")
     
     # Write output
-    print(f"Writing output to {args.outfile}...")
+    print(f"\nWriting output to {args.outfile}...")
     fout = ROOT.TFile(args.outfile, 'RECREATE')
+    
+    # Write counter histogram at top level
+    fout.cd()
+    counter.Write()
     
     # Write gen histograms
     if gen_hists:

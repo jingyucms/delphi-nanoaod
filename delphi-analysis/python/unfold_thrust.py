@@ -1,3 +1,14 @@
+"""
+Unfolding script for thrust analysis with systematic variations
+----------------------------------------------------------------
+Reads output from analysis_thrust.py which has structure:
+  - /reco/ThrustMissPNC2_{systematic}, etc.
+  - /gen/Thrust_before2, etc. (no systematics at gen level)
+  - /response/response_thrust2_{systematic}, etc.
+
+Unfolds data using response matrices for each systematic variation.
+"""
+
 import ROOT
 import numpy as np
 import sys
@@ -11,30 +22,12 @@ from ROOT import RooUnfoldBayes
 from common_functions import *
 from binning_and_selections import *
 
-def Proj2D_Y(h,xmin,xmax,hname="XXX"):
-    imin=h.GetXaxis().FindBin(xmin)
-    imax=h.GetXaxis().FindBin(xmax)-1
-    
-    proj_y=h.ProjectionY(hname, imin, imax)
-    ROOT.SetOwnership(proj_y,True)
-    return proj_y
-
-def Proj2D_X(h,ymin,ymax,hname="XXX",Debug=False):
-    imin=h.GetYaxis().FindBin(ymin)
-    imax=h.GetYaxis().FindBin(ymax)-1
-
-    proj_x=h.ProjectionX(hname, imin, imax)
-    ROOT.SetOwnership(proj_x,True)
-    return proj_x
-
 def convert_to_roounfold_response(reco_hist, gen_hist, response_hist, name="response"):
     """
-    Much simpler approach using direct constructor!
+    Convert TH1 and TH2 histograms to RooUnfoldResponse object.
     """
-    
     print(f"Creating RooUnfoldResponse '{name}' directly from histograms")
     
-    # Just use the direct constructor - that's it!
     response = ROOT.RooUnfoldResponse(
         reco_hist,      # measured TH1
         gen_hist,       # truth TH1
@@ -48,141 +41,178 @@ def convert_to_roounfold_response(reco_hist, gen_hist, response_hist, name="resp
 
 if __name__ == '__main__':
     
-    parser = argparse.ArgumentParser(description='RooUnfold unfolding script')
+    parser = argparse.ArgumentParser(description='RooUnfold unfolding script with systematics')
     parser.add_argument('--iterations', type=int, default=6,
                         help='Number of iterations for Bayesian unfolding')
     parser.add_argument('--version', type=str, default='v40',
                         help='Version tag for input/output files (e.g., v36, v40)')
+    parser.add_argument('--systematic', type=str, default='all',
+                        help='Which systematic to unfold: all, nominal, or specific systematic name')
     
     args = parser.parse_args()
     
-    # Version can be changed here or via command line
     VERSION = args.version
 
-    # Define thrust scenarios to unfold
-    # Define thrust scenarios to unfold
+    # List of systematics to process
+    # These should match the SYSTEMATICS dictionary in analysis_thrust.py
+    ALL_SYSTEMATICS = [
+        'nominal',
+#        'charged_scale_up',
+#        'charged_scale_down',
+#        'neutral_scale_up',
+#        'neutral_scale_down',
+#        'fake_drop',
+#        'charged_eff',
+#        'neutral_eff',
+#        'evt_weight',
+        'neutral_e_up',
+#        'neutral_e_down',
+#        'charged_pt_up',
+#        'charged_pt_down',
+    ]
+    
+    # Determine which systematics to process
+    if args.systematic == 'all':
+        systematics_to_unfold = ALL_SYSTEMATICS
+    elif args.systematic in ALL_SYSTEMATICS:
+        systematics_to_unfold = [args.systematic]
+    else:
+        print(f"ERROR: Unknown systematic '{args.systematic}'")
+        print(f"Available: {', '.join(ALL_SYSTEMATICS)}")
+        sys.exit(1)
+
+    # Define thrust modes to unfold
+    # Maps internal names to histogram names in the ROOT files
     thrust_modes = [
         {
             'name': 'thrust2',
-            'response_name': 'response_thrust2',
-            'reco_name': 'reco_thrust2',
-            'gen_name': 'gen_thrust2',
-            'before_name': 'Thrust_before2',
-            'dataname': 'ThrustMissPNC2'
+            'response_base': 'response_thrust2',         # response/response_thrust2_{syst}
+            'reco_base': 'ThrustMissPNC2',              # reco/ThrustMissPNC2_{syst}
+            'gen_name': 'Thrust_before2',               # gen/Thrust_before2
+            'data_name': 'ThrustMissPNC2_nominal'       # reco/ThrustMissPNC2_nominal (from data file)
         },
         {
             'name': 'thrust_log2',
-            'response_name': 'response_thrust_log2',
-            'reco_name': 'reco_thrust_log2',
-            'gen_name': 'gen_thrust_log2',
-            'before_name': 'Thrust_before_log2',
-            'dataname': 'ThrustMissPNCLog2'
+            'response_base': 'response_thrust_log2',
+            'reco_base': 'ThrustMissPNCLog2',
+            'gen_name': 'Thrust_before_log2',
+            'data_name': 'ThrustMissPNCLog2_nominal'
         },
         {
             'name': 'thrust2_Escheme',
-            'response_name': 'response_thrust2_Escheme',
-            'reco_name': 'reco_thrust2_Escheme',
-            'gen_name': 'gen_thrust2_Escheme',
-            'before_name': 'Thrust_before2_Escheme',
-            'dataname': 'ThrustMissPNC2_Escheme'
+            'response_base': 'response_thrust2_Escheme',
+            'reco_base': 'ThrustMissPNC2_Escheme',
+            'gen_name': 'Thrust_before2_Escheme',
+            'data_name': 'ThrustMissPNC2_Escheme_nominal'
         },
         {
             'name': 'thrust_log2_Escheme',
-            'response_name': 'response_thrust_log2_Escheme',
-            'reco_name': 'reco_thrust_log2_Escheme',
-            'gen_name': 'gen_thrust_log2_Escheme',
-            'before_name': 'Thrust_before_log2_Escheme',
-            'dataname': 'ThrustMissPNCLog2_Escheme'
-        },
-        # Charged thrust modes
-        {
-            'name': 'thrustDelphi_c',
-            'response_name': 'response_thrustDelphi_c',
-            'reco_name': 'reco_thrustDelphi_c',
-            'gen_name': 'gen_thrustDelphi_c',
-            'before_name': 'ThrustC_beforeDelphi',
-            'dataname': 'ThrustCDelphi'
+            'response_base': 'response_thrust_log2_Escheme',
+            'reco_base': 'ThrustMissPNCLog2_Escheme',
+            'gen_name': 'Thrust_before_log2_Escheme',
+            'data_name': 'ThrustMissPNCLog2_Escheme_nominal'
         },
         {
-            'name': 'thrustDelphi_c_Escheme',
-            'response_name': 'response_thrustDelphi_c_Escheme',
-            'reco_name': 'reco_thrustDelphi_c_Escheme',
-            'gen_name': 'gen_thrustDelphi_c_Escheme',
-            'before_name': 'ThrustC_beforeDelphi_Escheme',
-            'dataname': 'ThrustCDelphi_Escheme'
+            'name': 'thrustC2',
+            'response_base': 'response_thrustC2',
+            'reco_base': 'ThrustC2',
+            'gen_name': 'ThrustC_before2',
+            'data_name': 'ThrustC2_nominal'
+        },
+        {
+            'name': 'thrustC_log2',
+            'response_base': 'response_thrustC_log2',
+            'reco_base': 'ThrustCLog2',
+            'gen_name': 'ThrustC_before_log2',
+            'data_name': 'ThrustCLog2_nominal'
+        },
+        {
+            'name': 'thrustC2_Escheme',
+            'response_base': 'response_thrustC2_Escheme',
+            'reco_base': 'ThrustC2_Escheme',
+            'gen_name': 'ThrustC_before2_Escheme',
+            'data_name': 'ThrustC2_Escheme_nominal'
+        },
+        {
+            'name': 'thrustC_log2_Escheme',
+            'response_base': 'response_thrustC_log2_Escheme',
+            'reco_base': 'ThrustCLog2_Escheme',
+            'gen_name': 'ThrustC_before_log2_Escheme',
+            'data_name': 'ThrustCLog2_Escheme_nominal'
         }
     ]
 
-    # Define all MC generator configurations with their corresponding data files
-    # Filename pattern: response_thrust_{generator}_{dataset}_{VERSION}.root
+    # Define MC generator configurations
+    # Files from analysis_thrust.py after hadding
     mc_configs = [
         # 94c data configurations
         {
             'name': 'qqpy_94c',
-            'response_file': f'response_thrust_kk2f4146_qqpy_91.25_94c_{VERSION}.root',
-            'data_file': f'h_94c_{VERSION}.root',
+            'mc_file': f'thrust_kk2f4146_qqpy_91.25_94c_{VERSION}.root',
+            'data_file': f'thrust_data_94c_{VERSION}.root',
             'dataset': '94c'
         },
         {
             'name': 'qqardcy_94c',
-            'response_file': f'response_thrust_kk2f4146_qqardcy_91.25_94c_{VERSION}.root',
-            'data_file': f'h_94c_{VERSION}.root',
+            'mc_file': f'thrust_kk2f4146_qqardcy_91.25_94c_{VERSION}.root',
+            'data_file': f'thrust_data_94c_{VERSION}.root',
             'dataset': '94c'
         },
         {
             'name': 'pythia8_94c',
-            'response_file': f'response_thrust_pythia8_94c_{VERSION}.root',
-            'data_file': f'h_94c_{VERSION}.root',
+            'mc_file': f'thrust_pythia8_94c_{VERSION}.root',
+            'data_file': f'thrust_data_94c_{VERSION}.root',
             'dataset': '94c'
         },
         {
             'name': 'pythia8_dire_94c',
-            'response_file': f'response_thrust_pythia8_dire_94c_{VERSION}.root',
-            'data_file': f'h_94c_{VERSION}.root',
+            'mc_file': f'thrust_pythia8_dire_94c_{VERSION}.root',
+            'data_file': f'thrust_data_94c_{VERSION}.root',
             'dataset': '94c'
         },
         # 95d data configurations
         {
             'name': 'qqpy_95d',
-            'response_file': f'response_thrust_kk2f4146_qqpy_91.25_95d_{VERSION}.root',
-            'data_file': f'h_95d_{VERSION}.root',
+            'mc_file': f'thrust_kk2f4146_qqpy_91.25_95d_{VERSION}.root',
+            'data_file': f'thrust_data_95d_{VERSION}.root',
             'dataset': '95d'
         },
         {
             'name': 'pythia8_95d',
-            'response_file': f'response_thrust_pythia8_95d_{VERSION}.root',
-            'data_file': f'h_95d_{VERSION}.root',
+            'mc_file': f'thrust_pythia8_95d_{VERSION}.root',
+            'data_file': f'thrust_data_95d_{VERSION}.root',
             'dataset': '95d'
         },
         {
             'name': 'pythia8_dire_95d',
-            'response_file': f'response_thrust_pythia8_dire_95d_{VERSION}.root',
-            'data_file': f'h_95d_{VERSION}.root',
+            'mc_file': f'thrust_pythia8_dire_95d_{VERSION}.root',
+            'data_file': f'thrust_data_95d_{VERSION}.root',
             'dataset': '95d'
         }
     ]
 
-    # Single output file for all unfolded results
-    filenameout = f"unfolded_data_all_modes_all_generators_{VERSION}_iter{args.iterations}.root"
+    # Output file
+    filenameout = f"unfolded_thrust_systematics_{VERSION}_iter{args.iterations}.root"
     fout = ROOT.TFile(filenameout, 'recreate')
     
     print(f"Configuration:")
     print(f"  Version: {VERSION}")
     print(f"  Iterations: {args.iterations}")
+    print(f"  Systematics: {', '.join(systematics_to_unfold)}")
     print(f"  Output file: {filenameout}")
-    print(f"  Processing {len(thrust_modes)} thrust modes x {len(mc_configs)} MC generators = {len(thrust_modes) * len(mc_configs)} combinations...\n")
+    print(f"  Processing {len(thrust_modes)} thrust modes x {len(mc_configs)} MC generators x {len(systematics_to_unfold)} systematics")
+    print(f"  Total combinations: {len(thrust_modes) * len(mc_configs) * len(systematics_to_unfold)}\n")
 
-    # Track which data files we've already written for each mode
+    # Track which data histograms we've already written
     data_written = {}  # key: (dataset, mode_name)
 
     # Loop over all thrust modes
     for mode in thrust_modes:
         mode_name = mode['name']
-        response_name = mode['response_name']
-        reco_name = mode['reco_name']
+        response_base = mode['response_base']
+        reco_base = mode['reco_base']
         gen_name = mode['gen_name']
-        before_name = mode['before_name']
-        dataname = mode['dataname']
+        data_name = mode['data_name']
         
         print(f"\n{'#'*70}")
         print(f"# THRUST MODE: {mode_name}")
@@ -191,145 +221,141 @@ if __name__ == '__main__':
         # Loop over all MC configurations
         for config in mc_configs:
             mc_name = config['name']
-            filenamein = config['response_file']
-            datafile = config['data_file']
+            mc_file = config['mc_file']
+            data_file = config['data_file']
             dataset = config['dataset']
             
-            # Create unique identifier for this combination
-            combo_name = f"{mode_name}_{mc_name}"
-            data_key = (dataset, mode_name)
-            
             print(f"\n{'='*60}")
-            print(f"Processing: {combo_name}")
-            print(f"  Response file: {filenamein}")
-            print(f"  Data file: {datafile}")
+            print(f"MC Generator: {mc_name}")
+            print(f"  MC file: {mc_file}")
+            print(f"  Data file: {data_file}")
             print(f"  Dataset: {dataset}")
             print(f"{'='*60}")
             
             # Check if files exist
-            if not os.path.exists(filenamein):
-                print(f"WARNING: Response file {filenamein} not found. Skipping...")
+            if not os.path.exists(mc_file):
+                print(f"WARNING: MC file {mc_file} not found. Skipping...")
                 continue
             
-            if not os.path.exists(datafile):
-                print(f"WARNING: Data file {datafile} not found. Skipping...")
+            if not os.path.exists(data_file):
+                print(f"WARNING: Data file {data_file} not found. Skipping...")
                 continue
             
-            # Open response file first to check if this mode exists
-            fin = ROOT.TFile.Open(filenamein, 'r')
+            # Open files
+            fmc = ROOT.TFile.Open(mc_file, 'READ')
+            fdata = ROOT.TFile.Open(data_file, 'READ')
             
-            # Check if the required histograms exist in this response file
-            if not fin.Get(response_name):
-                print(f"WARNING: {response_name} not found in {filenamein}. Skipping...")
-                fin.Close()
-                continue
-            
-            if not fin.Get(reco_name):
-                print(f"WARNING: {reco_name} not found in {filenamein}. Skipping...")
-                fin.Close()
-                continue
-                
-            if not fin.Get(gen_name):
-                print(f"WARNING: {gen_name} not found in {filenamein}. Skipping...")
-                fin.Close()
-                continue
-            
-            if not fin.Get(before_name):
-                print(f"WARNING: {before_name} not found in {filenamein}. Skipping...")
-                fin.Close()
-                continue
-            
-            # Get data
-            fdata = ROOT.TFile.Open(datafile, 'r')
-            
-            # Check if data histogram exists
-            if not fdata.Get(dataname):
-                print(f"WARNING: {dataname} not found in {datafile}. Skipping...")
-                fdata.Close()
-                fin.Close()
-                continue
-            
-            data = fdata.Get(dataname).Clone(f"data_{dataset}_{mode_name}")
-            try:
-                n = fdata.Get('counter').GetBinContent(2)
-                data_counter = fdata.Get("counter").Clone(f"NData_{dataset}_{mode_name}")
-            except:
-                n = fdata.Get('N').GetBinContent(2)
-                data_counter = fdata.Get("N").Clone(f"NData_{dataset}_{mode_name}")
-            
-            # Write data and counter only once per dataset+mode combination
+            # Get data histogram (only once per dataset+mode, use nominal)
+            data_key = (dataset, mode_name)
             if data_key not in data_written:
+                data_hist_path = f"reco/{data_name}"
+                data_hist = fdata.Get(data_hist_path)
+                
+                if not data_hist:
+                    print(f"WARNING: Data histogram {data_hist_path} not found in {data_file}. Skipping this mode...")
+                    fdata.Close()
+                    fmc.Close()
+                    continue
+                
+                data = data_hist.Clone(f"data_{dataset}_{mode_name}")
                 fout.cd()
-                data_counter.Write(f"NData_{dataset}_{mode_name}")
-                data.Write(f"data_{dataset}_{mode_name}")
+                data.Write()
                 data_written[data_key] = True
-                print(f"  Wrote data for dataset {dataset}, mode {mode_name}")
+                print(f"  Wrote data histogram: data_{dataset}_{mode_name} (integral: {data.Integral():.1f})")
+            else:
+                # Get data from output file since we already wrote it
+                data = fout.Get(f"data_{dataset}_{mode_name}")
             
-            # Get histograms from response file
-            counter = fin.Get("counter").Clone(f"N_{combo_name}")
-            _response = fin.Get(response_name)
-            reco = fin.Get(reco_name)
-            gen = fin.Get(gen_name).Clone(f"gen_{combo_name}")
-            before = fin.Get(before_name).Clone(f"before_{combo_name}")
+            # Get gen-level histogram (no systematics at gen level)
+            gen_hist_path = f"gen/{gen_name}"
+            gen_hist = fmc.Get(gen_hist_path)
             
-            # Get normalization factors from counter histogram
-            n_before = counter.GetBinContent(1)  # Total generated events (before selections)
-            n_after = counter.GetBinContent(2)   # Events passing selections
+            if not gen_hist:
+                print(f"WARNING: Gen histogram {gen_hist_path} not found in {mc_file}. Skipping...")
+                fdata.Close()
+                fmc.Close()
+                continue
             
-            print(f"  Events before selection: {n_before}")
-            print(f"  Events after selection: {n_after}")
-            print(f"  Selection efficiency: {n_after/n_before if n_before > 0 else 0:.4f}")
-            
-            # Calculate correction factor: corr = (before/n_before) / (gen/n_after)
-            # This gives the full phase space correction accounting for selection efficiency
-            before_normalized = before.Clone(f"before_norm_temp")
-            gen_normalized = gen.Clone(f"gen_norm_temp")
-            
-            if n_before > 0:
-                before_normalized.Scale(1.0 / n_before)
-            if n_after > 0:
-                gen_normalized.Scale(1.0 / n_after)
-            
-            corr = before_normalized.Clone(f"corr_{combo_name}")
-            corr.Divide(gen_normalized)
-            
-            # Create response object
-            response = convert_to_roounfold_response(reco, gen, _response)
-            
-            # Check response matrix properties
-            RESPONSE = response.Mresponse()
-            singular = ROOT.TDecompSVD(RESPONSE)
-            print(f"Response matrix singular values for {combo_name}:")
-            singular.GetSig().Print()
-            
-            print(f"Data integral: {data.Integral()}")
-            print(f"Before integral: {before.Integral()}")
-            print(f"Gen integral: {gen.Integral()}")
-            
-            # Perform unfolding
-            print(f"Performing Bayesian unfolding with {args.iterations} iterations...")
-            unfold = ROOT.RooUnfoldBayes(response, data, args.iterations)
-            
-            hUnf = unfold.Hunfold().Clone(f"unfolded_{combo_name}")
-            print(f"Unfolded integral: {hUnf.Integral()}")
-            hErr = unfold.Eunfold().Clone(f"unfolding_errors_{combo_name}")
-            
-            # Write to output file
-            fout.cd()
-            counter.Write(f"N_{combo_name}")
-            _response.Write(f"response_{combo_name}")
-            reco.Write(f"reco_{combo_name}")
-            gen.Write(f"gen_{combo_name}") 
-            before.Write(f"before_{combo_name}")
-            corr.Write(f"corr_{combo_name}")
-            hUnf.Write(f"unfolded_{combo_name}")
-            hErr.Write(f"unfolding_errors_{combo_name}")
+            # Loop over systematics
+            for syst in systematics_to_unfold:
+                combo_name = f"{mode_name}_{mc_name}_{syst}"
+                
+                print(f"\n  Processing systematic: {syst}")
+                
+                # Build histogram names with systematic suffix
+                response_name = f"response/{response_base}_{syst}"
+                reco_name = f"reco/{reco_base}_{syst}"
+                
+                # Get histograms
+                response_hist = fmc.Get(response_name)
+                reco_hist = fmc.Get(reco_name)
+                
+                if not response_hist:
+                    print(f"    WARNING: {response_name} not found. Skipping...")
+                    continue
+                
+                if not reco_hist:
+                    print(f"    WARNING: {reco_name} not found. Skipping...")
+                    continue
+                
+                # Clone histograms
+                response_2d = response_hist.Clone(f"response_{combo_name}")
+                reco = reco_hist.Clone(f"reco_{combo_name}")
+                gen = gen_hist.Clone(f"gen_{combo_name}")
+                
+                print(f"    Response integral: {response_2d.Integral():.1f}")
+                print(f"    Reco integral: {reco.Integral():.1f}")
+                print(f"    Gen integral: {gen.Integral():.1f}")
+                print(f"    Data integral: {data.Integral():.1f}")
+                
+                # Create RooUnfoldResponse object
+                response = convert_to_roounfold_response(reco, gen, response_2d, name=f"response_{combo_name}")
+                
+                # Check response matrix condition
+                RESPONSE = response.Mresponse()
+                singular = ROOT.TDecompSVD(RESPONSE)
+                sig_values = singular.GetSig()
+                n_sig = sig_values.GetNrows()
+                if n_sig > 0 and sig_values[n_sig-1] > 0:
+                    cond_num = sig_values[0] / sig_values[n_sig-1]
+                    print(f"    Response matrix condition number: {cond_num:.2e}")
+                else:
+                    print(f"    WARNING: Response matrix is singular or has zero singular values!")
+                
+                # Perform unfolding
+                print(f"    Performing Bayesian unfolding with {args.iterations} iterations...")
+                unfold = ROOT.RooUnfoldBayes(response, data, args.iterations)
+                
+                hUnf = unfold.Hunfold().Clone(f"unfolded_{combo_name}")
+                
+                print(f"    Unfolded integral: {hUnf.Integral():.1f}")
+                
+                # Get error histogram (diagonal errors from covariance matrix)
+                hErr = unfold.Eunfold(ROOT.RooUnfold.kErrors).Clone(f"errors_{combo_name}")
+                
+#                # Get covariance matrix
+#                cov_matrix = unfold.Eunfold(ROOT.RooUnfold.kCovariance).Clone()
+#                cov_matrix.SetName(f"cov_{combo_name}")
+                
+                # Get correlation matrix
+#                corr_matrix = unfold.Eunfold(ROOT.RooUnfold.kCorrelation).Clone()
+#                corr_matrix.SetName(f"corr_{combo_name}")
+                
+                # Write to output file
+                fout.cd()
+                response_2d.Write()
+                reco.Write()
+                gen.Write()
+                hUnf.Write()
+                hErr.Write(f"errors_{combo_name}")
+#                cov_matrix.Write(f"cov_{combo_name}")
+#                corr_matrix.Write(f"corr_{combo_name}")
+                
+                print(f"    ✓ Completed unfolding for {combo_name}")
             
             # Close input files
-            fin.Close()
             fdata.Close()
-            
-            print(f"Completed unfolding for {combo_name}")
+            fmc.Close()
 
     # Close output file
     fout.Close()
