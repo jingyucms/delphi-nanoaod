@@ -584,7 +584,7 @@ def process_gen_level(tree_gen_before, tree_gen, event_idx, gen_hists,
 
 
 def process_reco_level(tree_reco, event_idx, systematics, reco_hists, response_matrices, 
-                       thrust_gen_dict=None, is_mc=False, counter=None):
+                       thrust_gen_dict=None, is_mc=False, counter=None, counter_weighted=None):
     """
     Process reco-level particles for all systematics.
     Applies event selection separately for each thrust variant.
@@ -939,7 +939,8 @@ def main():
             response_matrices,
             thrust_gen_dict=thrust_gen_dict,
             is_mc=args.is_mc,
-            counter=counter
+            counter=counter,
+            counter_weighted=counter_weighted
         )
         
         n_processed += 1

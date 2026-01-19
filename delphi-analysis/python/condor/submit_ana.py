@@ -123,7 +123,7 @@ nicknames = [
 #    "ALEPH"
 ]
 
-version = "v48"
+version = "v49"
 
 # Loop through each nickname
 for nickname in nicknames:
