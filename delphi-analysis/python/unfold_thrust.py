@@ -23,20 +23,20 @@ from common_functions import *
 from binning_and_selections import *
 
 def convert_to_roounfold_response(reco_hist, gen_hist, response_hist, name="response"):
-    """
-    Convert TH1 and TH2 histograms to RooUnfoldResponse object.
-    """
-    print(f"Creating RooUnfoldResponse '{name}' directly from histograms")
+    # Project response matrix to get true gen distribution (y-axis)
+    gen_from_response = response_hist.ProjectionY(f"{name}_gen_projection")
+    
+    # Project response matrix to get reco distribution (x-axis)  
+    reco_from_response = response_hist.ProjectionX(f"{name}_reco_projection")
     
     response = ROOT.RooUnfoldResponse(
-        reco_hist,      # measured TH1
-        gen_hist,       # truth TH1
-        response_hist,   # response TH2
-        name,           # name
-        name,           # title
-        False           # do_overflow
+        reco_from_response,  # Use projection from response
+        gen_from_response,   # Use projection from response
+        response_hist,
+        name,
+        name,
+        False
     )
-    
     return response
 
 if __name__ == '__main__':
@@ -203,68 +203,69 @@ if __name__ == '__main__':
     print(f"  Processing {len(thrust_modes)} thrust modes x {len(mc_configs)} MC generators x {len(systematics_to_unfold)} systematics")
     print(f"  Total combinations: {len(thrust_modes) * len(mc_configs) * len(systematics_to_unfold)}\n")
 
-    # Track which data histograms we've already written
-    data_written = {}  # key: (dataset, mode_name)
+    # Track counters we've already written
+    data_counters_written = set()  # dataset only
 
-    # Loop over all thrust modes
-    for mode in thrust_modes:
-        mode_name = mode['name']
-        response_base = mode['response_base']
-        reco_base = mode['reco_base']
-        gen_name = mode['gen_name']
-        data_name = mode['data_name']
+    # Dictionary to cache opened files
+    opened_mc_files = {}
+    opened_data_files = {}
+
+    # Loop over all MC configurations FIRST (outer loop)
+    for config in mc_configs:
+        mc_name = config['name']
+        mc_file = config['mc_file']
+        data_file = config['data_file']
+        dataset = config['dataset']
         
-        print(f"\n{'#'*70}")
-        print(f"# THRUST MODE: {mode_name}")
-        print(f"{'#'*70}")
+        print(f"\n{'='*60}")
+        print(f"MC Generator: {mc_name}")
+        print(f"  MC file: {mc_file}")
+        print(f"  Data file: {data_file}")
+        print(f"  Dataset: {dataset}")
+        print(f"{'='*60}")
         
-        # Loop over all MC configurations
-        for config in mc_configs:
-            mc_name = config['name']
-            mc_file = config['mc_file']
-            data_file = config['data_file']
-            dataset = config['dataset']
-            
-            print(f"\n{'='*60}")
-            print(f"MC Generator: {mc_name}")
-            print(f"  MC file: {mc_file}")
-            print(f"  Data file: {data_file}")
-            print(f"  Dataset: {dataset}")
-            print(f"{'='*60}")
-            
-            # Check if files exist
-            if not os.path.exists(mc_file):
-                print(f"WARNING: MC file {mc_file} not found. Skipping...")
-                continue
-            
-            if not os.path.exists(data_file):
-                print(f"WARNING: Data file {data_file} not found. Skipping...")
-                continue
-            
-            # Open files
-            fmc = ROOT.TFile.Open(mc_file, 'READ')
-            fdata = ROOT.TFile.Open(data_file, 'READ')
-            
-            # Get data histogram (only once per dataset+mode, use nominal)
-            data_key = (dataset, mode_name)
-            if data_key not in data_written:
-                data_hist_path = f"reco/{data_name}"
-                data_hist = fdata.Get(data_hist_path)
-                
-                if not data_hist:
-                    print(f"WARNING: Data histogram {data_hist_path} not found in {data_file}. Skipping this mode...")
-                    fdata.Close()
-                    fmc.Close()
-                    continue
-                
-                data = data_hist.Clone(f"data_{dataset}_{mode_name}")
+        # Check if files exist
+        if not os.path.exists(mc_file):
+            print(f"WARNING: MC file {mc_file} not found. Skipping...")
+            continue
+        
+        if not os.path.exists(data_file):
+            print(f"WARNING: Data file {data_file} not found. Skipping...")
+            continue
+        
+        # Open files ONCE per MC config (cache them)
+        if mc_file not in opened_mc_files:
+            opened_mc_files[mc_file] = ROOT.TFile.Open(mc_file, 'READ')
+        fmc = opened_mc_files[mc_file]
+        
+        if data_file not in opened_data_files:
+            opened_data_files[data_file] = ROOT.TFile.Open(data_file, 'READ')
+        fdata = opened_data_files[data_file]
+        
+        # Copy data counter ONCE per dataset
+        if dataset not in data_counters_written:
+            print(f"DEBUG: Writing counter for {dataset} for the FIRST time")
+            counter_data = fdata.Get("counter")
+            if counter_data:
+                print(f"DEBUG: Counter integral from file: {counter_data.Integral()}")
+                counter_clone = counter_data.Clone(f"counter_data_{dataset}")
                 fout.cd()
-                data.Write()
-                data_written[data_key] = True
-                print(f"  Wrote data histogram: data_{dataset}_{mode_name} (integral: {data.Integral():.1f})")
-            else:
-                # Get data from output file since we already wrote it
-                data = fout.Get(f"data_{dataset}_{mode_name}")
+                counter_clone.Write()
+                data_counters_written.add(dataset)
+        else:
+            print(f"DEBUG: SKIPPING counter for {dataset} (already written)")
+        
+        # Loop over all thrust modes (inner loop)
+        for mode in thrust_modes:
+            mode_name = mode['name']
+            response_base = mode['response_base']
+            reco_base = mode['reco_base']
+            gen_name = mode['gen_name']
+            data_name = mode['data_name']
+            
+            print(f"\n{'#'*70}")
+            print(f"# THRUST MODE: {mode_name}")
+            print(f"{'#'*70}")
             
             # Get gen-level histogram (no systematics at gen level)
             gen_hist_path = f"gen/{gen_name}"
@@ -272,8 +273,6 @@ if __name__ == '__main__':
             
             if not gen_hist:
                 print(f"WARNING: Gen histogram {gen_hist_path} not found in {mc_file}. Skipping...")
-                fdata.Close()
-                fmc.Close()
                 continue
             
             # Loop over systematics
@@ -281,6 +280,18 @@ if __name__ == '__main__':
                 combo_name = f"{mode_name}_{mc_name}_{syst}"
                 
                 print(f"\n  Processing systematic: {syst}")
+
+                # Load data histogram for THIS systematic
+                data_hist_name_syst = data_name.replace("nominal", syst)  #
+                data_hist_path = f"reco/{data_hist_name_syst}"            #
+                data_hist = fdata.Get(data_hist_path)                     #
+                
+                if not data_hist:                                          #
+                    print(f"    WARNING: Data histogram {data_hist_path} not found. Skipping...")  #
+                    continue                                               #
+                
+                data = data_hist.Clone(f"data_{combo_name}")              #
+                print(f"    Data histogram: {data_hist_path} (integral: {data.Integral():.1f})")  #
                 
                 # Build histogram names with systematic suffix
                 response_name = f"response/{response_base}_{syst}"
@@ -321,10 +332,17 @@ if __name__ == '__main__':
                     print(f"    Response matrix condition number: {cond_num:.2e}")
                 else:
                     print(f"    WARNING: Response matrix is singular or has zero singular values!")
+
+
+                print(f"    Data integral BEFORE unfolding: {data.Integral():.1f}")
+                print(f"    Reco (MC) integral: {reco.Integral():.1f}")
+                print(f"    Gen (MC) integral: {gen.Integral():.1f}")
+                print(f"    Response integral: {response_2d.Integral():.1f}")
                 
+                data_clone = data.Clone(f"data_clone_{combo_name}")
                 # Perform unfolding
                 print(f"    Performing Bayesian unfolding with {args.iterations} iterations...")
-                unfold = ROOT.RooUnfoldBayes(response, data, args.iterations)
+                unfold = ROOT.RooUnfoldBayes(response, data_clone, args.iterations)
                 
                 hUnf = unfold.Hunfold().Clone(f"unfolded_{combo_name}")
                 
@@ -333,29 +351,23 @@ if __name__ == '__main__':
                 # Get error histogram (diagonal errors from covariance matrix)
                 hErr = unfold.Eunfold(ROOT.RooUnfold.kErrors).Clone(f"errors_{combo_name}")
                 
-#                # Get covariance matrix
-#                cov_matrix = unfold.Eunfold(ROOT.RooUnfold.kCovariance).Clone()
-#                cov_matrix.SetName(f"cov_{combo_name}")
-                
-                # Get correlation matrix
-#                corr_matrix = unfold.Eunfold(ROOT.RooUnfold.kCorrelation).Clone()
-#                corr_matrix.SetName(f"corr_{combo_name}")
-                
-                # Write to output file
+                # Write to output file with unique names
                 fout.cd()
-                response_2d.Write()
-                reco.Write()
-                gen.Write()
-                hUnf.Write()
+                response_2d.Write(f"response_{combo_name}")
+                reco.Write(f"reco_{combo_name}")
+                data.Write(f"data_{combo_name}") 
+                gen.Write(f"gen_{combo_name}")
+                hUnf.Write(f"unfolded_{combo_name}")
                 hErr.Write(f"errors_{combo_name}")
-#                cov_matrix.Write(f"cov_{combo_name}")
-#                corr_matrix.Write(f"corr_{combo_name}")
                 
                 print(f"    ✓ Completed unfolding for {combo_name}")
-            
-            # Close input files
-            fdata.Close()
-            fmc.Close()
+
+    # Close all opened files
+    print("\nClosing input files...")
+    for f in opened_mc_files.values():
+        f.Close()
+    for f in opened_data_files.values():
+        f.Close()
 
     # Close output file
     fout.Close()

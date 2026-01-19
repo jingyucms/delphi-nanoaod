@@ -110,11 +110,11 @@ isGen = False
 executable = "analysis_thrust.py"
 
 nicknames = [
-#    "sh_kk2f4146qqpy_e91.25_c94_2l_c2",
+    "sh_kk2f4146qqpy_e91.25_c94_2l_c2",
     "sh_kk2f4146qqardcy_e91.25_r94_2l_c2",
     "sh_pythia8_94c",
     "sh_pythia8_dire_94c",
-#    "sh_kk2f4146qqpy_e91.25_c95_1l_d2",
+    "sh_kk2f4146qqpy_e91.25_c95_1l_d2",
     "sh_pythia8_95d",
     "sh_pythia8_dire_95d",
     "short94_c2",
@@ -123,11 +123,7 @@ nicknames = [
 #    "ALEPH"
 ]
 
-version = "v47"
-
-nickname = "sh_kk2f4146qqpy_e91.25_c94_2l_c2"
-is_mc = is_mc_sample(nickname)
-print(f"Is MC: {is_mc}")  # Should print True
+version = "v48"
 
 # Loop through each nickname
 for nickname in nicknames:
