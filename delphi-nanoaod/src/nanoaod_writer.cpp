@@ -1174,7 +1174,6 @@ void NanoAODWriter::fillSelection(particleData& pData,
 
 void NanoAODWriter::user99()
 {
-    // std::cout << "NanoAODWriter::user99: Finalising" << std::endl;
     file_->cd();
     out_t->Write();
     out_tgen->Write();
