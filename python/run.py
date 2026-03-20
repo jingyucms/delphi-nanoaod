@@ -18,7 +18,7 @@ if __name__ == "__main__":
     #os.system("source setup.sh")
     #os.system("cmake -B build")
     #os.system("cmake --build build")
-    nevt = 3000
+    nevt = -1
     for nn in ['test']:
         output = f"nanoaod_{nn}.root"
         #execution = f"build/delphi-nanoaod/delphi-nanoaod --nickname {nn} --mc --config config/delphi-nanoaod.yaml --output {output} -m {nevt}"

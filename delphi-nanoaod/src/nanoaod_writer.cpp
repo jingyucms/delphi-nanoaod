@@ -241,7 +241,6 @@ void NanoAODWriter::fillEvent()
     *Event_totalHadronicEnergy_ = sk::EHNEU;
     *Event_DSTType_ = sk::CDTYPE();
 
-
     out_pData.RunNo = *Event_runNumber_;
     out_pData.EventNo = *Event_eventNumber_;
     out_pData_gen.RunNo = out_pData.RunNo;
@@ -290,9 +289,9 @@ void NanoAODWriter::definePart(std::unique_ptr<RNTupleModel> &model)
     if (mc_ && sk::IFLSIM > 0)
     {
         MakeField(model, "Part_simIdx", "Particle simulation index", Part_simIdx_);
-        MakeField(model, "Part_originVtxIdx", "Particle origin vertex index", Part_originVtxIdx_);
-        MakeField(model, "Part_decayVtxIdx", "Particle decay vertex index", Part_decayVtxIdx_);
     }
+    MakeField(model, "Part_originVtxIdx", "Particle origin vertex index", Part_originVtxIdx_);
+    MakeField(model, "Part_decayVtxIdx", "Particle decay vertex index", Part_decayVtxIdx_);
 }
 
 void NanoAODWriter::fillPart()
@@ -321,12 +320,11 @@ void NanoAODWriter::fillPart()
     {
         fillVector(Part_simIdx_, sk::LVPART, sk::NVECP, [](int i)
                    { return sk::IPAST(i) - 1; });
-        fillVector(Part_originVtxIdx_, sk::LVPART, sk::NVECP, [](int i)
-                   { return sk::IPAPV(1, i) - 1; });
-        fillVector(Part_decayVtxIdx_, sk::LVPART, sk::NVECP, [](int i)
-                   { return sk::IPAPV(2, i) - 1; });
     }
-
+    fillVector(Part_originVtxIdx_, sk::LVPART, sk::NVECP, [](int i)
+                { return sk::IPAPV(1, i) - 1; });
+    fillVector(Part_decayVtxIdx_, sk::LVPART, sk::NVECP, [](int i)
+                { return sk::IPAPV(2, i) - 1; });
 }
 
 void NanoAODWriter::defineJet(std::unique_ptr<RNTupleModel> &model)
@@ -564,32 +562,29 @@ void NanoAODWriter::fillTrac()
 
     for (int i = sk::LVPART; i <= sk::NVECP; i++)
     {
-        // if (int(sk::VECP(7, i)) != 0)
-        // {
-            Trac_partIdx_->push_back(i - 1);
-            Trac_originVtxIdx_->push_back(sk::KTRAC(1, i) - 1);
-            Trac_decayVtxIdx_->push_back(sk::KTRAC(2, i) - 1);
-            Trac_perigee_->push_back(SVector5F(&sk::QTRAC(3, i), 5));
-            Trac_weightMatrix_->push_back(SMatrixSym5F(&sk::QTRAC(8, i), 15));
-            Trac_length_->push_back(sk::QTRAC(24, i));
-            Trac_detectors_->push_back(sk::KTRAC(25, i));
-            Trac_firstPointR_->push_back(sk::QTRAC(26, i));
-            Trac_firstPointZ_->push_back(sk::QTRAC(27, i));
-            Trac_chi2NoVD_->push_back(sk::QTRAC(28, i));
-            Trac_chi2VD_->push_back(sk::QTRAC(29, i));
-            Trac_ndfNoVD_->push_back(sk::KTRAC(30, i));
-            Trac_ndfVD_->push_back(sk::KTRAC(31, i));
-            Trac_vdHitsRPhi_->push_back(sk::KTRAC(32, i));
-            Trac_vdHitsZ_->push_back(sk::KTRAC(33, i));
-            Trac_resRPhiFirstPoint_->push_back(sk::QTRAC(34, i));
-            Trac_errorResRPhiFirstPoint_->push_back(sk::QTRAC(35, i));
-            Trac_resZFirstPoint_->push_back(sk::QTRAC(36, i));
-            Trac_errorResZFirstPoint_->push_back(sk::QTRAC(37, i));
-            Trac_impParToVertexRPhi_->push_back(sk::QTRAC(38, i));
-            Trac_impParToVertexZ_->push_back(sk::QTRAC(39, i));
-            Trac_impParToBeamSpotRPhi_->push_back(sk::QTRAC(40, i));
-            Trac_chi2VDHits_->push_back(sk::QTRAC(42, i));
-        // }
+        Trac_partIdx_->push_back(i - 1);
+        Trac_originVtxIdx_->push_back(sk::KTRAC(1, i) - 1);
+        Trac_decayVtxIdx_->push_back(sk::KTRAC(2, i) - 1);
+        Trac_perigee_->push_back(SVector5F(&sk::QTRAC(3, i), 5));
+        Trac_weightMatrix_->push_back(SMatrixSym5F(&sk::QTRAC(8, i), 15));
+        Trac_length_->push_back(sk::QTRAC(24, i));
+        Trac_detectors_->push_back(sk::KTRAC(25, i));
+        Trac_firstPointR_->push_back(sk::QTRAC(26, i));
+        Trac_firstPointZ_->push_back(sk::QTRAC(27, i));
+        Trac_chi2NoVD_->push_back(sk::QTRAC(28, i));
+        Trac_chi2VD_->push_back(sk::QTRAC(29, i));
+        Trac_ndfNoVD_->push_back(sk::KTRAC(30, i));
+        Trac_ndfVD_->push_back(sk::KTRAC(31, i));
+        Trac_vdHitsRPhi_->push_back(sk::KTRAC(32, i));
+        Trac_vdHitsZ_->push_back(sk::KTRAC(33, i));
+        Trac_resRPhiFirstPoint_->push_back(sk::QTRAC(34, i));
+        Trac_errorResRPhiFirstPoint_->push_back(sk::QTRAC(35, i));
+        Trac_resZFirstPoint_->push_back(sk::QTRAC(36, i));
+        Trac_errorResZFirstPoint_->push_back(sk::QTRAC(37, i));
+        Trac_impParToVertexRPhi_->push_back(sk::QTRAC(38, i));
+        Trac_impParToVertexZ_->push_back(sk::QTRAC(39, i));
+        Trac_impParToBeamSpotRPhi_->push_back(sk::QTRAC(40, i));
+        Trac_chi2VDHits_->push_back(sk::QTRAC(42, i));
     }
 }
 
@@ -609,14 +604,11 @@ void NanoAODWriter::fillMuid()
     Muid_hitPattern_->clear();
 
     for (int i = sk::LVPART; i <= sk::NVECP; i++)
-      {
-        // if (sk::KMUID(1, i) != 0)
-        // {
-            Muid_partIdx_->push_back(i - 1);
-            Muid_tag_->push_back(sk::KMUID(1, i));
-            Muid_looseChi2_->push_back(sk::QMUID(2, i));
-            Muid_hitPattern_->push_back(sk::KMUID(3, i));
-        // }
+    {
+        Muid_partIdx_->push_back(i - 1);
+        Muid_tag_->push_back(sk::KMUID(1, i));
+        Muid_looseChi2_->push_back(sk::QMUID(2, i));
+        Muid_hitPattern_->push_back(sk::KMUID(3, i));
     }
 }
 
@@ -640,15 +632,12 @@ void NanoAODWriter::fillElid()
     Elid_pz_->clear();
     for (int i = sk::LVPART; i <= sk::NVECP; i++)
     {
-        // if (sk::KELID(1, i) != 0)
-        // {
-            Elid_partIdx_->push_back(i - 1);
-            Elid_tag_->push_back(sk::KELID(1, i));
-            Elid_gammaConversion_->push_back(sk::KELID(2, i));
-            Elid_px_->push_back(sk::QELID(3, i));
-            Elid_py_->push_back(sk::QELID(4, i));
-            Elid_pz_->push_back(sk::QELID(5, i));
-        // }
+        Elid_partIdx_->push_back(i - 1);
+        Elid_tag_->push_back(sk::KELID(1, i));
+        Elid_gammaConversion_->push_back(sk::KELID(2, i));
+        Elid_px_->push_back(sk::QELID(3, i));
+        Elid_py_->push_back(sk::QELID(4, i));
+        Elid_pz_->push_back(sk::QELID(5, i));
     }
 }
 
@@ -797,67 +786,64 @@ void NanoAODWriter::fillHadid()
 
     for (int i = sk::LVPART; i <= sk::NVECP; ++i)
     {
-        // if (int(sk::VECP(7, i)) != 0)
-        // {
-            Haid_sign_->push_back(sk::KHAID(1, i));
-            Haid_kaonDedx_->push_back(sk::KHAID(2, i));
-            Haid_protonDedx_->push_back(sk::KHAID(3, i));
-            Haid_kaonRich_->push_back(sk::KHAID(4, i));
-            Haid_protonRich_->push_back(sk::KHAID(5, i));
-            Haid_pionRich_->push_back(sk::KHAID(6, i));
-            Haid_kaonCombined_->push_back(sk::QHAID(7, i));
-            Haid_protonCombined_->push_back(sk::QHAID(8, i));
-            Haid_richQuality_->push_back(sk::KHAID(9, i));
+        Haid_sign_->push_back(sk::KHAID(1, i));
+        Haid_kaonDedx_->push_back(sk::KHAID(2, i));
+        Haid_protonDedx_->push_back(sk::KHAID(3, i));
+        Haid_kaonRich_->push_back(sk::KHAID(4, i));
+        Haid_protonRich_->push_back(sk::KHAID(5, i));
+        Haid_pionRich_->push_back(sk::KHAID(6, i));
+        Haid_kaonCombined_->push_back(sk::QHAID(7, i));
+        Haid_protonCombined_->push_back(sk::QHAID(8, i));
+        Haid_richQuality_->push_back(sk::KHAID(9, i));
 
-            Haidn_pionTag_->push_back(sk::KHAIDN(1, i));
-            Haidn_kaonTag_->push_back(sk::KHAIDN(2, i));
-            Haidn_protonTag_->push_back(sk::KHAIDN(3, i));
-            Haidn_heavyTag_->push_back(sk::KHAIDN(4, i));
-            Haidn_pionTrackSelection_->push_back(sk::KHAIDT(1, i));
-            Haidn_kaonTrackSelection_->push_back(sk::KHAIDT(2, i));
-            Haidn_protonTrackSelection_->push_back(sk::KHAIDT(3, i));
-            Haidn_heavyTrackSelection_->push_back(sk::KHAIDT(4, i));
+        Haidn_pionTag_->push_back(sk::KHAIDN(1, i));
+        Haidn_kaonTag_->push_back(sk::KHAIDN(2, i));
+        Haidn_protonTag_->push_back(sk::KHAIDN(3, i));
+        Haidn_heavyTag_->push_back(sk::KHAIDN(4, i));
+        Haidn_pionTrackSelection_->push_back(sk::KHAIDT(1, i));
+        Haidn_kaonTrackSelection_->push_back(sk::KHAIDT(2, i));
+        Haidn_protonTrackSelection_->push_back(sk::KHAIDT(3, i));
+        Haidn_heavyTrackSelection_->push_back(sk::KHAIDT(4, i));
 
-            Haidr_pionTag_->push_back(sk::KHAIDR(1, i));
-            Haidr_kaonTag_->push_back(sk::KHAIDR(2, i));
-            Haidr_protonTag_->push_back(sk::KHAIDR(3, i));
-            Haidr_heavyTag_->push_back(sk::KHAIDR(4, i));
-            Haidr_electronTag_->push_back(sk::KHAIDR(5, i));
-            Haidr_selectionFlag_->push_back(sk::KHAIDR(6, i));
+        Haidr_pionTag_->push_back(sk::KHAIDR(1, i));
+        Haidr_kaonTag_->push_back(sk::KHAIDR(2, i));
+        Haidr_protonTag_->push_back(sk::KHAIDR(3, i));
+        Haidr_heavyTag_->push_back(sk::KHAIDR(4, i));
+        Haidr_electronTag_->push_back(sk::KHAIDR(5, i));
+        Haidr_selectionFlag_->push_back(sk::KHAIDR(6, i));
 
-            Haide_pionTag_->push_back(sk::KHAIDE(1, i));
-            Haide_kaonTag_->push_back(sk::KHAIDE(2, i));
-            Haide_protonTag_->push_back(sk::KHAIDE(3, i));
-            Haide_heavyTag_->push_back(sk::KHAIDE(4, i));
-            Haide_electronTag_->push_back(sk::KHAIDE(5, i));
-            Haide_selectionFlag_->push_back(sk::KHAIDE(6, i));
+        Haide_pionTag_->push_back(sk::KHAIDE(1, i));
+        Haide_kaonTag_->push_back(sk::KHAIDE(2, i));
+        Haide_protonTag_->push_back(sk::KHAIDE(3, i));
+        Haide_heavyTag_->push_back(sk::KHAIDE(4, i));
+        Haide_electronTag_->push_back(sk::KHAIDE(5, i));
+        Haide_selectionFlag_->push_back(sk::KHAIDE(6, i));
 
-            Haidc_pionTag_->push_back(sk::KHAIDC(1, i));
-            Haidc_kaonTag_->push_back(sk::KHAIDC(2, i));
-            Haidc_protonTag_->push_back(sk::KHAIDC(3, i));
-            Haidc_heavyTag_->push_back(sk::KHAIDC(4, i));
-            Haidc_electronTag_->push_back(sk::KHAIDC(5, i));
-            Haidc_selectionFlag_->push_back(sk::KHAIDC(6, i));
+        Haidc_pionTag_->push_back(sk::KHAIDC(1, i));
+        Haidc_kaonTag_->push_back(sk::KHAIDC(2, i));
+        Haidc_protonTag_->push_back(sk::KHAIDC(3, i));
+        Haidc_heavyTag_->push_back(sk::KHAIDC(4, i));
+        Haidc_electronTag_->push_back(sk::KHAIDC(5, i));
+        Haidc_selectionFlag_->push_back(sk::KHAIDC(6, i));
 
-            Dedx_value_->push_back(sk::QDEDX(1, i));
-            Dedx_width_->push_back(sk::QDEDX(2, i));
-            Dedx_nrWires_->push_back(sk::KDEDX(3, i));
-            Dedx_gapWires_->push_back(sk::QDEDX(4, i));
-            Dedx_error_->push_back(sk::QDEDX(5, i));
-            Dedx_valueVD_->push_back(sk::QDEDX(6, i));
-            Dedx_nrVDHits_->push_back(sk::KDEDX(7, i));
+        Dedx_value_->push_back(sk::QDEDX(1, i));
+        Dedx_width_->push_back(sk::QDEDX(2, i));
+        Dedx_nrWires_->push_back(sk::KDEDX(3, i));
+        Dedx_gapWires_->push_back(sk::QDEDX(4, i));
+        Dedx_error_->push_back(sk::QDEDX(5, i));
+        Dedx_valueVD_->push_back(sk::QDEDX(6, i));
+        Dedx_nrVDHits_->push_back(sk::KDEDX(7, i));
 
-            Rich_theg_->push_back(sk::THEG(i));
-            Rich_sigg_->push_back(sk::SIGG(i));
-            Rich_nphg_->push_back(sk::NPHG(i));
-            Rich_nepg_->push_back(sk::NEPG(i));
-            Rich_flagg_->push_back(sk::FLAGG(i));
-            Rich_thel_->push_back(sk::THEL(i));
-            Rich_sigl_->push_back(sk::SIGL(i));
-            Rich_nphl_->push_back(sk::NPHL(i));
-            Rich_nepl_->push_back(sk::NEPL(i));
-            Rich_flagl_->push_back(sk::FLAGL(i));
-        // }
+        Rich_theg_->push_back(sk::THEG(i));
+        Rich_sigg_->push_back(sk::SIGG(i));
+        Rich_nphg_->push_back(sk::NPHG(i));
+        Rich_nepg_->push_back(sk::NEPG(i));
+        Rich_flagg_->push_back(sk::FLAGG(i));
+        Rich_thel_->push_back(sk::THEL(i));
+        Rich_sigl_->push_back(sk::SIGL(i));
+        Rich_nphl_->push_back(sk::NPHL(i));
+        Rich_nepl_->push_back(sk::NEPL(i));
+        Rich_flagl_->push_back(sk::FLAGL(i));
     }
 }
 

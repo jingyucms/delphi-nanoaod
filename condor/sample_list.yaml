@@ -71,9 +71,57 @@ sh_pythia8_94c:
   copy_energy: "91.2" 
   extension: .sdst
 
+sh_pythia8_bb_94c:
+  type: sim
+  stream: pythia8_bb  
+  version: v94c        
+  energy: "91.25"      
+  copy_energy: "91.2" 
+  extension: .sdst
+
+sh_pythia8_cc_94c:
+  type: sim
+  stream: pythia8_cc  
+  version: v94c        
+  energy: "91.25"      
+  copy_energy: "91.2" 
+  extension: .sdst
+
+sh_pythia8_ss_94c:
+  type: sim
+  stream: pythia8_ss  
+  version: v94c        
+  energy: "91.25"      
+  copy_energy: "91.2" 
+  extension: .sdst
+
+sh_pythia8_light_94c:
+  type: sim
+  stream: pythia8_light  
+  version: v94c        
+  energy: "91.25"      
+  copy_energy: "91.2" 
+  extension: .sdst
+
 sh_pythia8_dire_94c:
   type: sim
   stream: pythia8_dire  
+  version: v94c        
+  energy: "91.25"      
+  copy_energy: "91.2" 
+  extension: .sdst
+
+sh_kk2f_isr_on_94c:
+  type: sim
+  stream: kk2f_ISRon 
+  version: v94c        
+  energy: "91.25"      
+  copy_energy: "91.2" 
+  extension: .sdst
+
+sh_kk2f_isr_off_94c:
+  type: sim
+  stream: kk2f_ISRoff  
   version: v94c        
   energy: "91.25"      
   copy_energy: "91.2" 

@@ -93,12 +93,12 @@ def build_patterns(nickname):
             for subdir in cfg["subdirs"]:
                 pattern = str(opendata_dir / "collision-data" / subdir / f"*{cfg['extension']}")
                 patterns.append(pattern)
-    elif cfg["stream"] in ["pythia8", "pythia8_dire"]:
+    elif cfg["stream"] in ["pythia8", "pythia8_dire", "pythia8_bb", "pythia8_cc", "pythia8_ss", "pythia8_light", "kk2f_ISRon", "kk2f_ISRoff"]:
         # Pythia8 files are in the new EOS structure under SDST
         year, short_version = extract_version_info(cfg["version"])
         energy = cfg.get("copy_energy") or cfg["energy"]
         base = Path("/eos/experiment/eealliance/Samples/DELPHI")
-        pattern = str(base / year / energy / "MC" / short_version / "SDST" / cfg["stream"] / "251219" / "simana*sdst")
+        pattern = str(base / year / energy / "MC" / short_version / "SDST" / cfg["stream"] / "251219" / "*sdst")
         patterns = [pattern]
     else:
         # Original sim type logic
@@ -156,14 +156,14 @@ if __name__ == "__main__":
     min_bytes = 100_000      # 100 KB
     max_days = 3
 
-    MAX_QUEUE = 200
+    MAX_QUEUE = 500
     USER = os.environ["USER"]
 
     config = load_config()
     
     #nickname = "short94_c2"
     #nickname = "sh_qqps_e91.25_c94_2l_c2"
-    nickname = "sh_kk2f4146qqpy_e91.25_c94_2l_c2"
+    #nickname = "sh_kk2f4146qqpy_e91.25_c94_2l_c2"
     #nickname = "sh_kk2f4146qqpydcy_e91.25_c94_2l_c2"
     #nickname = "sh_kk2f4146qqardcy_e91.25_r94_2l_c2"
     #nickname = "sh_apacic105_e91.25_w94_2l_c2"
@@ -172,6 +172,14 @@ if __name__ == "__main__":
     #nickname = "sh_pythia8_94c"
     #nickname = "sh_pythia8_dire_94c"
     #nickname = "sh_kk2f4146tthl_e91.25_c94_2l_c2"
+
+    #nickname = "sh_pythia8_bb_94c"
+    #nickname = "sh_pythia8_cc_94c"
+    #nickname = "sh_pythia8_ss_94c"
+    #nickname = "sh_pythia8_light_94c"
+
+    #nickname = "sh_kk2f_isr_on_94c"
+    #nickname = "sh_kk2f_isr_off_94c"
 
     #nickname = "short95_d2"
     #nickname = "sh_kk2f4146qqpy_e91.25_c95_1l_d2"
@@ -182,7 +190,7 @@ if __name__ == "__main__":
     #nickname = "xsdst99_e196_e1"
     #nickname = "xsdst99_e200_e1"
     #nickname = "xsdst99_e202_e1"
-    #nickname = "xs_kk2f4143qq_e191.6_r99_1l_e1"
+    nickname = "xs_kk2f4143qq_e191.6_r99_1l_e1"
     #nickname = "xs_kk2f4143qq_e195.5_l99_1l_e1"
     #nickname = "xs_kk2f4143qq_e199.5_c99_1l_e1"
     #nickname = "xs_kk2f4143qq_e201.6_l99_1l_e1"
@@ -194,10 +202,12 @@ if __name__ == "__main__":
     #nickname = "xs_wphact21nc4f_e195.5_m80.4_l99_1l_e1"
     #nickname = "xs_wphact21nc4f_e199.5_m80.4_l99_1l_e1"
     #nickname = "xs_wphact21nc4f_e201.6_m80.4_l99_1l_e1"
+
     #nickname = "xs_wphact211ncgg_e191.6_m80.4_c99_1l_e1"
     #nickname = "xs_wphact211ncgg_e195.5_m80.4_c99_1l_e1"
     #nickname = "xs_wphact211ncgg_e199.5_m80.4_c99_1l_e1"
     #nickname = "xs_wphact211ncgg_e201.6_m80.4_c99_1l_e1"
+
     #nickname = "xs_kk2f4144tthl_e191.6_c99_1l_e1"
     #nickname = "xs_kk2f4144tthl_e195.5_c99_1l_e1"
     #nickname = "xs_kk2f4144tthl_e199.5_c99_1l_e1"

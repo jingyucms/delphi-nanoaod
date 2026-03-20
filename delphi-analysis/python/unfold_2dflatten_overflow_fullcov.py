@@ -1081,9 +1081,12 @@ if __name__ == '__main__':
     
     surfix += f'_{args.jacobian}'
 
-    filenamein = 'response_ALEPHMC_LEP1MC1994_recons_aftercut.v3.root'
-    datafile = 'h_aleph_v3.root'
-    filenameout = f'unfolded_data_aleph_v3{surfix}.root'
+    filenamein = 'response_kk2f4146_qqpy_91.25_v16_zcov.root'
+    datafile = 'h_94c_v8_cov.root'
+    filenameout = 'unfolded_data_kk2f4146_qqpy_91.25_v6_niter4_overflow_z.root'
+    #filenamein = 'response_ALEPHMC_LEP1MC1994_recons_aftercut.v3.root'
+    #datafile = 'h_aleph_v3.root'
+    #filenameout = f'unfolded_data_aleph_v3{surfix}.root'
     
     data2dname = f'EEC2d_{args.jacobian}'
     

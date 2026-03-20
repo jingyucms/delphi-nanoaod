@@ -98,32 +98,40 @@ def is_mc_sample(nickname):
     
     return config[nickname]["type"] == "sim"
 
-isGen = False
-
 # Executable to run
 #executable = "analysis_correlation.py"
 #executable = "analysis_eec_lep2.py"
 #executable = "analysis_eec.py"
+executable = "analysis_fbcec.py"
 #executable = "analysis_trk.py"
 #executable = "create_response_matrices.py"
 #executable = "create_response_matrices_thrust.py"
-executable = "analysis_thrust.py"
+#executable = "analysis_thrust.py"
 
 nicknames = [
-    "sh_kk2f4146qqpy_e91.25_c94_2l_c2",
-    "sh_kk2f4146qqardcy_e91.25_r94_2l_c2",
+    #"sh_kk2f4146qqpy_e91.25_c94_2l_c2",
+    #"sh_kk2f4146qqardcy_e91.25_r94_2l_c2",
     "sh_pythia8_94c",
-    "sh_pythia8_dire_94c",
-    "sh_kk2f4146qqpy_e91.25_c95_1l_d2",
-    "sh_pythia8_95d",
-    "sh_pythia8_dire_95d",
-    "short94_c2",
-    "short95_d2"
+    #"sh_pythia8_dire_94c",
+    #"sh_kk2f4146qqpy_e91.25_c95_1l_d2",
+    #"sh_pythia8_95d",
+    #"sh_pythia8_dire_95d",
+    "short94_c2"
+    #"short95_d2"
 #    "ALEPHMC"
 #    "ALEPH"
 ]
 
-version = "v49"
+#nicknames = [
+#    "sh_kk2f_isr_on_94c",
+#    "sh_kk2f_isr_off_94c",
+#    "sh_pythia8_bb_94c",
+#    "sh_pythia8_cc_94c",
+#    "sh_pythia8_ss_94c",
+#    "sh_pythia8_light_94c"
+#]
+
+version = "v51"
 
 # Loop through each nickname
 for nickname in nicknames:
@@ -165,8 +173,6 @@ for nickname in nicknames:
         env["EXE"] = executable
         env["ana"] = executable.replace("analysis_", "").replace(".py", "").replace("create", "")
         env["ana"] += '_'+nickname
-        if isGen:
-            env["ana"]+="gen"
         
         # Add --is-mc flag for MC samples
         if is_mc:
