@@ -14,7 +14,6 @@
 #include "skelana/psctbl.hpp"
 #include "skelana/psctra.hpp"
 #include "skelana/pscmud.hpp"
-#include "skelana/pscelo.hpp"
 #include "skelana/psceld.hpp"
 #include "skelana/pschad.hpp"
 #include "skelana/pschdn.hpp"
@@ -25,6 +24,7 @@
 #include "skelana/pscgrc.hpp"
 #include "skelana/psclrc.hpp"
 #include "skelana/pscbtg.hpp"
+#include "skelana/pscbsp.hpp"
 #include "skelana/pscemf_hpc_hac_stic.hpp"
 
 #endif // SKELANA_HPP

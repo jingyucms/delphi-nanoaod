@@ -13,6 +13,7 @@ echo ">>> Running in scratch: $WORKDIR"
 CODEDIR=/afs/cern.ch/user/z/zhangj/private/DELPHI/delphi-nanoaod/delphi-analysis/python
 cp $CODEDIR/*.py .
 cp $CODEDIR/condor/run_condor.sh .   # ✅ also copy the script
+cp $CODEDIR/efficiency_*.root .
 source $CODEDIR/RooUnfold/build/setup.sh
 
 echo ">>> Files in scratch:"

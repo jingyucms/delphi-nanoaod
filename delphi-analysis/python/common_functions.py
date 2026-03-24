@@ -890,7 +890,7 @@ def match_angular(rec: P4Block, gen: P4Block, r):
 
     # --- cost matrix: ΔR, but “inf” for opposite charge ------------------
     cost = rvals.copy()
-    #cost[(rec.q[:, None] * gen.q[None, :]) < 0] = 9999   # forbid q·Q ≤ 0
+    cost[(rec.q[:, None] * gen.q[None, :]) < 0] = 9999   # forbid q·Q ≤ 0
 
     # Hungarian assignment
     row, col = linear_sum_assignment(cost)

@@ -1,7 +1,7 @@
 universe       = vanilla
 executable     = ./condor/run_condor.sh
 
-output         = ./condor/condorOut/condor_$ENV(f).stdout
+output         = /dev/null
 error          = ./condor/condorOut/condor_$ENV(f).stderr
 log            = ./condor/condorOut/condor_$ENV(f).log
 

@@ -56,11 +56,11 @@ def build_input_pattern(nickname):
     if cfg["type"] == "data":
         # Data: read from TPCNtuple (for *al.root files) or DelphiNanoAOD (for analysis)
         # Most analysis uses the _ttree.root files from DelphiNanoAOD
-        input_dir = base / year / energy / "Data" / short_version / "TPCNtuple" / "251219"
+        input_dir = base / year / energy / "Data" / short_version / "TPCNtuple" / "260320"
     else:
         # MC: read from TPCNtuple directory
         stream = cfg["stream"]
-        input_dir = base / year / energy / "MC" / short_version / "TPCNtuple" / stream / "251219"
+        input_dir = base / year / energy / "MC" / short_version / "TPCNtuple" / stream / "260320"
     
     return str(input_dir)
 
@@ -102,16 +102,19 @@ def is_mc_sample(nickname):
 #executable = "analysis_correlation.py"
 #executable = "analysis_eec_lep2.py"
 #executable = "analysis_eec.py"
-executable = "analysis_fbcec.py"
+#executable = "analysis_fbcec.py"
+executable = "correction_fbcc.py"
+#executable = "estimate_fake.py"
+#executable = "select_v0.py"
 #executable = "analysis_trk.py"
 #executable = "create_response_matrices.py"
 #executable = "create_response_matrices_thrust.py"
 #executable = "analysis_thrust.py"
 
 nicknames = [
-    #"sh_kk2f4146qqpy_e91.25_c94_2l_c2",
+    "sh_kk2f4146qqpy_e91.25_c94_2l_c2",
     #"sh_kk2f4146qqardcy_e91.25_r94_2l_c2",
-    "sh_pythia8_94c",
+    #"sh_pythia8_94c",
     #"sh_pythia8_dire_94c",
     #"sh_kk2f4146qqpy_e91.25_c95_1l_d2",
     #"sh_pythia8_95d",
@@ -131,7 +134,7 @@ nicknames = [
 #    "sh_pythia8_light_94c"
 #]
 
-version = "v51"
+version = "v53"
 
 # Loop through each nickname
 for nickname in nicknames:

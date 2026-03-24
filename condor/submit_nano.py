@@ -27,7 +27,7 @@ def extract_version_info(version_str):
     
     return year, short_version
 
-def build_output_paths(cfg, date="251219"):
+def build_output_paths(cfg, date="260320"):
     """
     Build output paths for both TPCNtuple and DelphiNanoAOD.
     Returns: (tpcntuple_dir, delphinanoaod_dir, TYPE)
@@ -154,7 +154,7 @@ def load_config(yaml_path="condor/sample_list.yaml"):
 if __name__ == "__main__":
 
     min_bytes = 100_000      # 100 KB
-    max_days = 3
+    max_days = 1
 
     MAX_QUEUE = 500
     USER = os.environ["USER"]
@@ -163,7 +163,7 @@ if __name__ == "__main__":
     
     #nickname = "short94_c2"
     #nickname = "sh_qqps_e91.25_c94_2l_c2"
-    #nickname = "sh_kk2f4146qqpy_e91.25_c94_2l_c2"
+    nickname = "sh_kk2f4146qqpy_e91.25_c94_2l_c2"
     #nickname = "sh_kk2f4146qqpydcy_e91.25_c94_2l_c2"
     #nickname = "sh_kk2f4146qqardcy_e91.25_r94_2l_c2"
     #nickname = "sh_apacic105_e91.25_w94_2l_c2"
@@ -190,7 +190,7 @@ if __name__ == "__main__":
     #nickname = "xsdst99_e196_e1"
     #nickname = "xsdst99_e200_e1"
     #nickname = "xsdst99_e202_e1"
-    nickname = "xs_kk2f4143qq_e191.6_r99_1l_e1"
+    #nickname = "xs_kk2f4143qq_e191.6_r99_1l_e1"
     #nickname = "xs_kk2f4143qq_e195.5_l99_1l_e1"
     #nickname = "xs_kk2f4143qq_e199.5_c99_1l_e1"
     #nickname = "xs_kk2f4143qq_e201.6_l99_1l_e1"

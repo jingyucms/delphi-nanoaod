@@ -6,6 +6,8 @@
 
 #include "skelana_analysis.hpp"
 #include "skelana.hpp"
+#include "skelana/pscvda.hpp"
+#include "skelana/pscvdu.hpp"
 
 #include <ROOT/RNTuple.hxx>
 #include <ROOT/RNTupleModel.hxx>
@@ -265,20 +267,6 @@ private:
     std::shared_ptr<std::vector<float>> Elid_px_;
     std::shared_ptr<std::vector<float>> Elid_py_;
     std::shared_ptr<std::vector<float>> Elid_pz_;
-    std::shared_ptr<std::vector<float>> Elou_eOverP_;
-    std::shared_ptr<std::vector<float>> Elou_deltaZHpc_;
-    std::shared_ptr<std::vector<float>> Elou_deltaPhiDirectionHpc_;
-    std::shared_ptr<std::vector<float>> Elou_deltaPhiPositionHpc_;
-    std::shared_ptr<std::vector<float>> Elou_dedxMeasurement_;
-    std::shared_ptr<std::vector<float>> Elou_dedxMeasurementError_;
-    std::shared_ptr<std::vector<float>> Elou_dedxNumTpcWires_;
-    std::shared_ptr<std::vector<float>> Elou_probFromEOverP_;
-    std::shared_ptr<std::vector<float>> Elou_probFromShowerFit_;
-    std::shared_ptr<std::vector<float>> Elou_probFromDeltaZHpc_;
-    std::shared_ptr<std::vector<float>> Elou_probFromDeltaPhiDirectionHpc_;
-    std::shared_ptr<std::vector<float>> Elou_probFromDedxElectron_;
-    std::shared_ptr<std::vector<float>> Elou_probFromDedxPion_;
-    std::shared_ptr<std::vector<float>> Elou_hpcElectronProbability_;
 
     std::shared_ptr<std::vector<int>> Haid_sign_;
     std::shared_ptr<std::vector<int>> Haid_kaonDedx_;
@@ -343,6 +331,38 @@ private:
     std::shared_ptr<std::vector<float>> Btag_probPosIP_;
     std::shared_ptr<std::vector<float>> Btag_probAllIP_;
     std::shared_ptr<XYZVectorF> Btag_thrustVector_; 
+
+    // --- VD Associated hits ---
+    std::shared_ptr<int> nVdHit_;
+    std::shared_ptr<std::vector<int>>   VdHit_trackIdx_;
+    std::shared_ptr<std::vector<int>>   VdHit_module_;
+    std::shared_ptr<std::vector<float>> VdHit_localX_;
+    std::shared_ptr<std::vector<float>> VdHit_R_;
+    std::shared_ptr<std::vector<float>> VdHit_RPhi_;
+    std::shared_ptr<std::vector<float>> VdHit_signalToNoise_;
+    
+    // --- VD Unassociated hits ---
+    std::shared_ptr<int> nVdUnHit_;
+    std::shared_ptr<std::vector<int>>   VdUnHit_module_;
+    std::shared_ptr<std::vector<float>> VdUnHit_localX_;
+    std::shared_ptr<std::vector<float>> VdUnHit_R_;
+    std::shared_ptr<std::vector<float>> VdUnHit_RPhi_;
+    std::shared_ptr<std::vector<float>> VdUnHit_signalToNoise_;
+
+    // --- Beam spot ---
+    std::shared_ptr<int>   BeamSpot_errorFlag_;
+    std::shared_ptr<float> BeamSpot_x_;
+    std::shared_ptr<float> BeamSpot_y_;
+    std::shared_ptr<float> BeamSpot_z_;
+    std::shared_ptr<float> BeamSpot_sigmaX_;
+    std::shared_ptr<float> BeamSpot_sigmaY_;
+    std::shared_ptr<float> BeamSpot_sigmaZ_;
+    
+    // --- Method declarations ---
+    void defineVdHit(std::unique_ptr<RNTupleModel> &model);
+    void fillVdHit();
+    void defineVdUnHit(std::unique_ptr<RNTupleModel> &model);
+    void fillVdUnHit();
 
 };
 

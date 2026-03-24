@@ -77,4 +77,11 @@ C      WRITE(*,*) 'LSH = ', LSH
 C      IF (LSH .GE. 0) WRITE(*,*) 'IQ(LSH+4) = ', IQ(LSH+4)
       IF (LSH .GE. 0 .AND. IQ(LSH+4) .GE. 0) THEN
 +PAM,11,T=A,C,               IF=UNIX.  (DELPHI_PAM)/dedxid.car
++DECK, BLKVDCDE.
+      BLOCK DATA BLKVDCDE
++CDE, MTRACK.
++CDE, PSCVDA.
++CDE, PSCVDU.
++CDE, PSCBSP.
+      END
 +QUIT.

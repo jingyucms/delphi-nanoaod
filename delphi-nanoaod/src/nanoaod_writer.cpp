@@ -66,8 +66,6 @@ void NanoAODWriter::setMC()
 
 void NanoAODWriter::user00()
 {
-    // std::cout << "NanoAODWriter::user00: Initialising" << std::endl;
-
     super::user00();
 
     std::unique_ptr<RNTupleModel> model = RNTupleModel::Create();
@@ -89,6 +87,8 @@ void NanoAODWriter::user00()
     if (sk::IFLTRA > 0)
     {
         defineTrac(model);
+        defineVdHit(model);
+        defineVdUnHit(model);
     }
     if (sk::IFLMUO > 0)
     {
@@ -106,6 +106,15 @@ void NanoAODWriter::user00()
     {
         defineBtag(model);
     }
+    if (sk::IFLBSP > 0)
+    {
+        defineBeamSpot(model);
+    }
+    if (sk::IFLBSP > 0)
+    {
+        fillBeamSpot();
+    }
+
     // writer_ = RNTupleWriter::Recreate(std::move(model), "Events", output_.string());
 
     file_ = TFile::Open(output_.string().c_str(), "recreate");
@@ -168,6 +177,8 @@ void NanoAODWriter::user02()
     if (sk::IFLTRA > 0)
     {
         fillTrac();
+        fillVdHit();
+        fillVdUnHit();
     }
     if (sk::IFLMUO > 0)
     {
@@ -261,13 +272,10 @@ void NanoAODWriter::fillEvent()
     out_pData.particleWeight = 1;
     out_pData_gen.particleWeight = 1;
     out_pData_sim.particleWeight = 1;
-	  // out_pData.uniqueID = 0;
-	  // out_pData.Energy = 0;
-	  // out_pData.bFlag = -999;
-	  // out_pData.bx = -999;
-	  // out_pData.by = -999;
-	  // out_pData.ebx = -999;
-	  // out_pData.eby = -999;
+    out_pData.bx  = sk::XYZBS(1);
+    out_pData.by  = sk::XYZBS(2);
+    out_pData.ebx = sk::DXYZBS(1);
+    out_pData.eby = sk::DXYZBS(2);
     out_pData.Energy = *Event_cmEnergy_;
     out_pData_gen.Energy = *Event_cmEnergy_;
     out_pData_sim.Energy = *Event_cmEnergy_;
@@ -692,20 +700,6 @@ void NanoAODWriter::defineElid(std::unique_ptr<RNTupleModel> &model)
     MakeField(model, "Elid_px", "Best electron px estimation", Elid_px_);
     MakeField(model, "Elid_py", "Best electron py estimation", Elid_py_);
     MakeField(model, "Elid_pz", "Best electron pz estimation", Elid_pz_);
-    MakeField(model, "Elou_eOverP", "QELOU(1): E_shower/P_track", Elou_eOverP_);
-    MakeField(model, "Elou_deltaZHpc", "QELOU(2): Z(extrapolation)-Z(HPC)", Elou_deltaZHpc_);
-    MakeField(model, "Elou_deltaPhiDirectionHpc", "QELOU(3): phi direction mismatch to HPC", Elou_deltaPhiDirectionHpc_);
-    MakeField(model, "Elou_deltaPhiPositionHpc", "QELOU(4): phi position mismatch to HPC", Elou_deltaPhiPositionHpc_);
-    MakeField(model, "Elou_dedxMeasurement", "QELOU(5): dE/dX measurement", Elou_dedxMeasurement_);
-    MakeField(model, "Elou_dedxMeasurementError", "QELOU(6): error on dE/dX measurement", Elou_dedxMeasurementError_);
-    MakeField(model, "Elou_dedxNumTpcWires", "QELOU(7): number of TPC wires from dE/dX", Elou_dedxNumTpcWires_);
-    MakeField(model, "Elou_probFromEOverP", "QELOU(8): probability from E/P", Elou_probFromEOverP_);
-    MakeField(model, "Elou_probFromShowerFit", "QELOU(9): probability from shower fit", Elou_probFromShowerFit_);
-    MakeField(model, "Elou_probFromDeltaZHpc", "QELOU(10): probability from Z(TPC)-Z(HPC)", Elou_probFromDeltaZHpc_);
-    MakeField(model, "Elou_probFromDeltaPhiDirectionHpc", "QELOU(11): probability from phi direction mismatch", Elou_probFromDeltaPhiDirectionHpc_);
-    MakeField(model, "Elou_probFromDedxElectron", "QELOU(12): probability from dE/dX for electron", Elou_probFromDedxElectron_);
-    MakeField(model, "Elou_probFromDedxPion", "QELOU(13): probability from dE/dX for pion", Elou_probFromDedxPion_);
-    MakeField(model, "Elou_hpcElectronProbability", "QELOU(14): electron probability from HPC", Elou_hpcElectronProbability_);
 }
 
 void NanoAODWriter::fillElid()
@@ -716,20 +710,6 @@ void NanoAODWriter::fillElid()
     Elid_px_->clear();
     Elid_py_->clear();
     Elid_pz_->clear();
-    Elou_eOverP_->clear();
-    Elou_deltaZHpc_->clear();
-    Elou_deltaPhiDirectionHpc_->clear();
-    Elou_deltaPhiPositionHpc_->clear();
-    Elou_dedxMeasurement_->clear();
-    Elou_dedxMeasurementError_->clear();
-    Elou_dedxNumTpcWires_->clear();
-    Elou_probFromEOverP_->clear();
-    Elou_probFromShowerFit_->clear();
-    Elou_probFromDeltaZHpc_->clear();
-    Elou_probFromDeltaPhiDirectionHpc_->clear();
-    Elou_probFromDedxElectron_->clear();
-    Elou_probFromDedxPion_->clear();
-    Elou_hpcElectronProbability_->clear();
     for (int i = sk::LVPART; i <= sk::NVECP; i++)
     {
         Elid_partIdx_->push_back(i - 1);
@@ -738,20 +718,6 @@ void NanoAODWriter::fillElid()
         Elid_px_->push_back(sk::QELID(3, i));
         Elid_py_->push_back(sk::QELID(4, i));
         Elid_pz_->push_back(sk::QELID(5, i));
-        Elou_eOverP_->push_back(sk::QELOU(1, i));
-        Elou_deltaZHpc_->push_back(sk::QELOU(2, i));
-        Elou_deltaPhiDirectionHpc_->push_back(sk::QELOU(3, i));
-        Elou_deltaPhiPositionHpc_->push_back(sk::QELOU(4, i));
-        Elou_dedxMeasurement_->push_back(sk::QELOU(5, i));
-        Elou_dedxMeasurementError_->push_back(sk::QELOU(6, i));
-        Elou_dedxNumTpcWires_->push_back(sk::QELOU(7, i));
-        Elou_probFromEOverP_->push_back(sk::QELOU(8, i));
-        Elou_probFromShowerFit_->push_back(sk::QELOU(9, i));
-        Elou_probFromDeltaZHpc_->push_back(sk::QELOU(10, i));
-        Elou_probFromDeltaPhiDirectionHpc_->push_back(sk::QELOU(11, i));
-        Elou_probFromDedxElectron_->push_back(sk::QELOU(12, i));
-        Elou_probFromDedxPion_->push_back(sk::QELOU(13, i));
-        Elou_hpcElectronProbability_->push_back(sk::QELOU(14, i));
     }
 }
 
@@ -961,6 +927,95 @@ void NanoAODWriter::fillHadid()
     }
 }
 
+void NanoAODWriter::defineVdHit(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nVdHit", "Number of VD associated hits", nVdHit_);
+    MakeField(model, "VdHit_trackIdx", "Track index for this VD hit", VdHit_trackIdx_);
+    MakeField(model, "VdHit_module", "KVDAS(1): Module number (sign = Z side)", VdHit_module_);
+    MakeField(model, "VdHit_localX", "QVDAS(2): Local X (or Z since 94) coordinate", VdHit_localX_);
+    MakeField(model, "VdHit_R", "QVDAS(3): R coordinate (-R if R-Z measured)", VdHit_R_);
+    MakeField(model, "VdHit_RPhi", "QVDAS(4): RPhi (or Z since 94) coordinate", VdHit_RPhi_);
+    MakeField(model, "VdHit_signalToNoise", "QVDAS(5): Signal to noise ratio", VdHit_signalToNoise_);
+}
+ 
+void NanoAODWriter::fillVdHit()
+{
+    VdHit_trackIdx_->clear();
+    VdHit_module_->clear();
+    VdHit_localX_->clear();
+    VdHit_R_->clear();
+    VdHit_RPhi_->clear();
+    VdHit_signalToNoise_->clear();
+ 
+    int totalHits = 0;
+    for (int i = sk::LVPART; i <= sk::NVECP; i++)
+    {
+        int nHits = sk::NASHT(i);
+        for (int n = 1; n <= nHits; n++)
+        {
+            VdHit_trackIdx_->push_back(i - 1);
+            VdHit_module_->push_back(sk::KVDAS(1, i, n));
+            VdHit_localX_->push_back(sk::QVDAS(2, i, n));
+            VdHit_R_->push_back(sk::QVDAS(3, i, n));
+            VdHit_RPhi_->push_back(sk::QVDAS(4, i, n));
+            VdHit_signalToNoise_->push_back(sk::QVDAS(5, i, n));
+            totalHits++;
+        }
+    }
+    *nVdHit_ = totalHits;
+}
+
+void NanoAODWriter::defineVdUnHit(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nVdUnHit", "Number of VD unassociated hits", nVdUnHit_);
+    MakeField(model, "VdUnHit_module", "KVDUN(1): Module number (sign = Z side)", VdUnHit_module_);
+    MakeField(model, "VdUnHit_localX", "QVDUN(2): Local X (or Z since 94) coordinate", VdUnHit_localX_);
+    MakeField(model, "VdUnHit_R", "QVDUN(3): R coordinate (-R if R-Z measured)", VdUnHit_R_);
+    MakeField(model, "VdUnHit_RPhi", "QVDUN(4): RPhi (or Z since 94) coordinate", VdUnHit_RPhi_);
+    MakeField(model, "VdUnHit_signalToNoise", "QVDUN(5): Signal to noise ratio", VdUnHit_signalToNoise_);
+}
+ 
+void NanoAODWriter::fillVdUnHit()
+{
+    VdUnHit_module_->clear();
+    VdUnHit_localX_->clear();
+    VdUnHit_R_->clear();
+    VdUnHit_RPhi_->clear();
+    VdUnHit_signalToNoise_->clear();
+ 
+    *nVdUnHit_ = sk::NVDUN;
+    for (int i = 1; i <= sk::NVDUN; i++)
+    {
+        VdUnHit_module_->push_back(sk::KVDUN(1, i));
+        VdUnHit_localX_->push_back(sk::QVDUN(2, i));
+        VdUnHit_R_->push_back(sk::QVDUN(3, i));
+        VdUnHit_RPhi_->push_back(sk::QVDUN(4, i));
+        VdUnHit_signalToNoise_->push_back(sk::QVDUN(5, i));
+    }
+}
+
+void NanoAODWriter::defineBeamSpot(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "BeamSpot_errorFlag", "Beam spot error flag (0=OK)", BeamSpot_errorFlag_);
+    MakeField(model, "BeamSpot_x", "Beam spot x position", BeamSpot_x_);
+    MakeField(model, "BeamSpot_y", "Beam spot y position", BeamSpot_y_);
+    MakeField(model, "BeamSpot_z", "Beam spot z position", BeamSpot_z_);
+    MakeField(model, "BeamSpot_sigmaX", "Beam spot sigma x", BeamSpot_sigmaX_);
+    MakeField(model, "BeamSpot_sigmaY", "Beam spot sigma y", BeamSpot_sigmaY_);
+    MakeField(model, "BeamSpot_sigmaZ", "Beam spot sigma z", BeamSpot_sigmaZ_);
+}
+
+void NanoAODWriter::fillBeamSpot()
+{
+    *BeamSpot_errorFlag_ = sk::IERRBS;
+    *BeamSpot_x_ = sk::XYZBS(1);
+    *BeamSpot_y_ = sk::XYZBS(2);
+    *BeamSpot_z_ = sk::XYZBS(3);
+    *BeamSpot_sigmaX_ = sk::DXYZBS(1);
+    *BeamSpot_sigmaY_ = sk::DXYZBS(2);
+    *BeamSpot_sigmaZ_ = sk::DXYZBS(3);
+}
+
 void NanoAODWriter::fillPartLoop(particleData& pData,
                                  eventData& eData,
                                  DataKind cat) {
@@ -1062,8 +1117,8 @@ void NanoAODWriter::fillPartLoop(particleData& pData,
                 }
                 // TODO: use vdHits?
                 pData.ntpc[nParticle] = (pData.charge[nParticle]!=0)? 7: 0;
-                pData.d0[nParticle] = sk::QTRAC(4, i);
-                pData.z0[nParticle] = sk::QTRAC(5, i);
+                pData.d0[nParticle] = sk::QTRAC(38, i);
+                pData.z0[nParticle] = sk::QTRAC(39, i);
                 // use this variable to store track length for DELPHI
                 pData.weight[nParticle] = sk::QTRAC(24, i);
                 
@@ -1170,7 +1225,6 @@ void NanoAODWriter::fillSelection(particleData& pData,
     eData.d2 = eSelection.getd2();
     eData.cW = eSelection.getcW();
 }
-
 
 void NanoAODWriter::user99()
 {
