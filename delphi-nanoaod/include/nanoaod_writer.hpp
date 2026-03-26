@@ -124,6 +124,11 @@ private:
     int lock[particleData::nMaxPart];
     TDatabasePDG* pdgDatabase = nullptr;
 
+    // ADD these three:
+    float chi2ndf[particleData::nMaxPart];    // chi2/ndf (no VD)
+    float chi2ndfVD[particleData::nMaxPart];  // chi2/ndf (with VD)
+    float dpp[particleData::nMaxPart];        // delta p / p
+
     std::shared_ptr<int> Event_runNumber_;
     std::shared_ptr<int> Event_eventNumber_;
     std::shared_ptr<int> Event_fillNumber_;

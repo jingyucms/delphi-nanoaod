@@ -149,6 +149,10 @@ void NanoAODWriter::user00()
     out_t->Branch("STIC", stic, "STIC[nParticle]/F");
     out_t->Branch("LOCK", lock, "LOCK[nParticle]/I");
 
+    out_t->Branch("chi2ndf",   chi2ndf,   "chi2ndf[nParticle]/F");
+    out_t->Branch("chi2ndfVD", chi2ndfVD, "chi2ndfVD[nParticle]/F");
+    out_t->Branch("dpp",       dpp,       "dpp[nParticle]/F");
+
     pdgDatabase = TDatabasePDG::Instance();
 };
 
@@ -1072,11 +1076,16 @@ void NanoAODWriter::fillPartLoop(particleData& pData,
                     q = -particle->Charge() / 3.0;
                 }
                 pData.pid[nParticle] = pdgid;
+
                 // for gen, use this var to store Lund status
                 pData.pwflag[nParticle] = (sk::KP(i, 1) == 1) ? 1 : 4; 
                 pData.highPurity[nParticle]= 1;
                 pData.index[nParticle] = i;
                 pData.correspondenceIndex[nParticle] = sk::ILUST(i);
+                // No track quality info for gen/sim
+                chi2ndf[nParticle]   = -1.f;
+                chi2ndfVD[nParticle] = -1.f;
+                dpp[nParticle]       = -1.f;
 
                 nParticleHP++;
                 if (abs(q) > 0.5) {
@@ -1092,6 +1101,11 @@ void NanoAODWriter::fillPartLoop(particleData& pData,
                 pData.highPurity[nParticle]= 1;
                 pData.index[nParticle] = i;
                 pData.correspondenceIndex[nParticle] = sk::ISTPA(i);
+
+                // No track quality info for gen/sim
+                chi2ndf[nParticle]   = -1.f;
+                chi2ndfVD[nParticle] = -1.f;
+                dpp[nParticle]       = -1.f;
                 
                 nParticleHP++;
                 nChargedParticle++;
@@ -1121,6 +1135,43 @@ void NanoAODWriter::fillPartLoop(particleData& pData,
                 pData.z0[nParticle] = sk::QTRAC(39, i);
                 // use this variable to store track length for DELPHI
                 pData.weight[nParticle] = sk::QTRAC(24, i);
+
+                // --- Track quality variables ---
+                // chi2/ndf (no VD)
+                int ndf_noVD = sk::KTRAC(30, i);
+                float chi2_noVD = sk::QTRAC(28, i);
+                chi2ndf[nParticle] = (ndf_noVD > 0) ? chi2_noVD / ndf_noVD : -1.f;
+
+                // chi2/ndf (with VD)
+                int ndf_VD = sk::KTRAC(31, i);
+                float chi2_VD = sk::QTRAC(29, i);
+                chi2ndfVD[nParticle] = (ndf_VD > 0) ? chi2_VD / ndf_VD : -1.f;
+
+                // delta p / p from the weight matrix
+                // Perigee order: (d0, z0, theta, phi, 1/R)
+                // Weight matrix QTRAC(8..22) is the UPPER triangle of 5x5 symmetric
+                // stored as: W11, W12, W13, W14, W15,
+                //                  W22, W23, W24, W25,
+                //                       W33, W34, W35,
+                //                            W44, W45,
+                //                                 W55
+                // Element W55 = sigma^{-2}(1/R) is at index 22 (offset 8 + 14)
+                // 1/R is related to pT by: pT = 0.3 * B * R  (B in Tesla, R in meters)
+                // so sigma(pT)/pT = sigma(1/R) / (1/R) = sigma(p)/p for a helix
+                //
+                // W55 = 1/sigma^2(1/R), and 1/R = QTRAC(7,i) (the 5th perigee param)
+                // But the perigee vector starts at QTRAC(3,i):
+                //   QTRAC(3) = d0, QTRAC(4) = z0 (at perigee, not vertex!),
+                //   QTRAC(5) = theta, QTRAC(6) = phi, QTRAC(7) = 1/R
+                float invR = sk::QTRAC(7, i);  // 1/R (curvature)
+                float W55  = sk::QTRAC(22, i); // weight matrix element for 1/R
+
+                if (std::abs(invR) > 1e-10f && W55 > 0.f) {
+                    float sigma_invR = 1.f / std::sqrt(W55);
+                    dpp[nParticle] = sigma_invR / std::abs(invR);
+                } else {
+                    dpp[nParticle] = -1.f;  // undefined (neutral or degenerate)
+                }
                 
                 // below we follow the same definition in eventSelection.h
                 // TODO: Use DELPHI selections

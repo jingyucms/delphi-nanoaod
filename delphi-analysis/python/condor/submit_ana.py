@@ -102,8 +102,8 @@ def is_mc_sample(nickname):
 #executable = "analysis_correlation.py"
 #executable = "analysis_eec_lep2.py"
 #executable = "analysis_eec.py"
-#executable = "analysis_fbcec.py"
-executable = "correction_fbcc.py"
+executable = "analysis_fbcec.py"
+#executable = "correction_fbcc.py"
 #executable = "estimate_fake.py"
 #executable = "select_v0.py"
 #executable = "analysis_trk.py"
@@ -112,9 +112,9 @@ executable = "correction_fbcc.py"
 #executable = "analysis_thrust.py"
 
 nicknames = [
-    "sh_kk2f4146qqpy_e91.25_c94_2l_c2",
+    #"sh_kk2f4146qqpy_e91.25_c94_2l_c2",
     #"sh_kk2f4146qqardcy_e91.25_r94_2l_c2",
-    #"sh_pythia8_94c",
+    "sh_pythia8_94c",
     #"sh_pythia8_dire_94c",
     #"sh_kk2f4146qqpy_e91.25_c95_1l_d2",
     #"sh_pythia8_95d",
@@ -134,7 +134,7 @@ nicknames = [
 #    "sh_pythia8_light_94c"
 #]
 
-version = "v53"
+version = "v56"
 
 # Loop through each nickname
 for nickname in nicknames:

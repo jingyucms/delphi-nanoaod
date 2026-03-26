@@ -98,7 +98,7 @@ def build_patterns(nickname):
         year, short_version = extract_version_info(cfg["version"])
         energy = cfg.get("copy_energy") or cfg["energy"]
         base = Path("/eos/experiment/eealliance/Samples/DELPHI")
-        pattern = str(base / year / energy / "MC" / short_version / "SDST" / cfg["stream"] / "251219" / "*sdst")
+        pattern = str(base / year / energy / "MC" / short_version / "SDST" / cfg["stream"] / "260320" / "*sdst")
         patterns = [pattern]
     else:
         # Original sim type logic
@@ -161,13 +161,13 @@ if __name__ == "__main__":
 
     config = load_config()
     
-    #nickname = "short94_c2"
+    nickname = "short94_c2"
     #nickname = "sh_qqps_e91.25_c94_2l_c2"
-    nickname = "sh_kk2f4146qqpy_e91.25_c94_2l_c2"
+    #nickname = "sh_kk2f4146qqpy_e91.25_c94_2l_c2"
     #nickname = "sh_kk2f4146qqpydcy_e91.25_c94_2l_c2"
     #nickname = "sh_kk2f4146qqardcy_e91.25_r94_2l_c2"
     #nickname = "sh_apacic105_e91.25_w94_2l_c2"
-    #nickname = "sh_zgpy_b94_2l_c2"
+    #nickname = "sh_zgpy_b94_2l_c2" 
     #nickname = "sh_qqps_k94_2l_c2"
     #nickname = "sh_pythia8_94c"
     #nickname = "sh_pythia8_dire_94c"
