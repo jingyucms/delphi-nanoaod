@@ -1,5 +1,10 @@
 set (CMAKE_CXX_STANDARD 17)
-set (FASTJETDIR /afs/cern.ch/work/c/cmcginn/public/Fastjet/fastjet-install)
+# FASTJETDIR: point at a fastjet install that has bin/fastjet-config + lib/libfastjet.so.
+# Override via `-DFASTJETDIR=...`. Default is the LCG_107 view on CVMFS (EL9, gcc13)
+# which ships a matching ROOT 6.34 build; the previous default
+# (/afs/cern.ch/work/c/cmcginn/public/...) was a private AFS path that does not
+# exist for most users.
+set (FASTJETDIR "/cvmfs/sft.cern.ch/lcg/views/LCG_107/x86_64-el9-gcc13-opt" CACHE PATH "FastJet install dir")
 
 configure_file(src/skelana.cra.in skelana.cra)
 ypatchy(skelana.f ${CMAKE_CURRENT_BINARY_DIR}/skelana.cra)
