@@ -74,6 +74,18 @@ void NanoAODWriter::user00()
     definePart(model);
     definePhoton(model);
     defineVtx(model);
+    if (sk::IFLRV0 > 0)
+    {
+        defineV0(model);
+    }
+    if (sk::IFLPHC > 0)
+    {
+        definePhotonConv(model);
+    }
+    if (sk::IFLUTE > 0)
+    {
+        defineUter(model);
+    }
 
     if (sk::IFLJET > 0)
     {
@@ -170,6 +182,18 @@ void NanoAODWriter::user02()
     fillPart();
     fillPhoton();
     fillVtx();
+    if (sk::IFLRV0 > 0)
+    {
+        fillV0();
+    }
+    if (sk::IFLPHC > 0)
+    {
+        fillPhotonConv();
+    }
+    if (sk::IFLUTE > 0)
+    {
+        fillUter();
+    }
     if (sk::IFLJET > 0)
     {
         fillJet();
@@ -437,6 +461,20 @@ void NanoAODWriter::definePhoton(std::unique_ptr<RNTupleModel> &model)
     MakeField(model, "Photon_sticChargedTag", "KSTIC(5): STIC charged-track veto. Code values (SKELANA v1.05 A.3.3): -2 = tight photon, -1 = loose photon, 0 = no information, +1 = electron", Photon_sticChargedTag_);
     MakeField(model, "Photon_emEnergy", "QEMF(8): total EM energy (FEMC/HPC merged)", Photon_emEnergy_);
     MakeField(model, "Photon_hadEnergy", "QHAC(8): HAC leakage, for EM/HAD cut", Photon_hadEnergy_);
+
+    // Tier 2: per-track photon- and pi0-ID in HPC (only populated where SKELANA filled
+    // PSCPHO / PSCPI0; require IFLPHO > 0 in the yaml config).
+    MakeField(model, "Photon_hpcEnergyWeightedDepth",      "QPHOT(1): energy-weighted shower depth (PSCPHO)", Photon_hpcEnergyWeightedDepth_);
+    MakeField(model, "Photon_hpcPhotNumClusters",          "KPHOT(2): number of HPC clusters in PSCPHO", Photon_hpcPhotNumClusters_);
+    MakeField(model, "Photon_hpcPhotFirstLayer",           "KPHOT(3): number of the first HPC layer", Photon_hpcPhotFirstLayer_);
+    MakeField(model, "Photon_hpcPhotMaxConsecutiveLayers", "KPHOT(5): max number of consecutive HPC layers", Photon_hpcPhotMaxConsecutiveLayers_);
+    MakeField(model, "Photon_hpcTransverseFluctuation",    "QPHOT(6): transverse shower fluctuation measure", Photon_hpcTransverseFluctuation_);
+    MakeField(model, "Photon_pi0FittedMass",               "QPI0(12): fitted pi0 mass — key pi0 discriminator", Photon_pi0FittedMass_);
+    MakeField(model, "Photon_pi0Chi2",                     "QPI0(22): chi2 of the pi0 fit", Photon_pi0Chi2_);
+    MakeField(model, "Photon_pi0GammaChi2",                "QPI0(24): chi2 of the single-gamma fit", Photon_pi0GammaChi2_);
+    MakeField(model, "Photon_pi0NumConnectedMaxima",       "KPI0(5): number of connected maxima in HPCANA", Photon_pi0NumConnectedMaxima_);
+    MakeField(model, "Photon_pi0NumExpectedMaxima",        "KPI0(6): number of expected maxima in HPCANA", Photon_pi0NumExpectedMaxima_);
+    MakeField(model, "Photon_pi0RelE1stGaussian",          "QPI0(7): relative energy of the first Gaussian", Photon_pi0RelE1stGaussian_);
 }
 
 void NanoAODWriter::fillPhoton()
@@ -458,6 +496,17 @@ void NanoAODWriter::fillPhoton()
     Photon_sticChargedTag_->clear();
     Photon_emEnergy_->clear();
     Photon_hadEnergy_->clear();
+    Photon_hpcEnergyWeightedDepth_->clear();
+    Photon_hpcPhotNumClusters_->clear();
+    Photon_hpcPhotFirstLayer_->clear();
+    Photon_hpcPhotMaxConsecutiveLayers_->clear();
+    Photon_hpcTransverseFluctuation_->clear();
+    Photon_pi0FittedMass_->clear();
+    Photon_pi0Chi2_->clear();
+    Photon_pi0GammaChi2_->clear();
+    Photon_pi0NumConnectedMaxima_->clear();
+    Photon_pi0NumExpectedMaxima_->clear();
+    Photon_pi0RelE1stGaussian_->clear();
 
     for (int i = sk::LVPART; i <= sk::NVECP; ++i)
     {
@@ -488,8 +537,262 @@ void NanoAODWriter::fillPhoton()
         Photon_sticChargedTag_->push_back(sk::KSTIC(5, i));
         Photon_emEnergy_->push_back(emfTot);
         Photon_hadEnergy_->push_back(sk::QHAC(8, i));
+        Photon_hpcEnergyWeightedDepth_->push_back(sk::QPHOT(1, i));
+        Photon_hpcPhotNumClusters_->push_back(sk::KPHOT(2, i));
+        Photon_hpcPhotFirstLayer_->push_back(sk::KPHOT(3, i));
+        Photon_hpcPhotMaxConsecutiveLayers_->push_back(sk::KPHOT(5, i));
+        Photon_hpcTransverseFluctuation_->push_back(sk::QPHOT(6, i));
+        Photon_pi0FittedMass_->push_back(sk::QPI0(12, i));
+        Photon_pi0Chi2_->push_back(sk::QPI0(22, i));
+        Photon_pi0GammaChi2_->push_back(sk::QPI0(24, i));
+        Photon_pi0NumConnectedMaxima_->push_back(sk::KPI0(5, i));
+        Photon_pi0NumExpectedMaxima_->push_back(sk::KPI0(6, i));
+        Photon_pi0RelE1stGaussian_->push_back(sk::QPI0(7, i));
     }
     *nPhoton_ = static_cast<int16_t>(Photon_partIdx_->size());
+}
+
+// -----------------------------------------------------------------------------
+// PhotonConv collection (PSCPHC, one row per reconstructed γ→e+e- conversion).
+// Separate from Photon_* because the indexing is per-event, not per-track;
+// matching to a Photon_* row would require kinematic association, which is
+// intentionally left to downstream analysis.
+// -----------------------------------------------------------------------------
+void NanoAODWriter::definePhotonConv(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nPhotonConv",                  "Number of γ→e+e- conversions (PSCPHC)", nPhotonConv_);
+    MakeField(model, "PhotonConv_firstDaughterIdx",  "KPHOC(1)-1: index of first decay product", PhotonConv_firstDaughterIdx_);
+    MakeField(model, "PhotonConv_secondDaughterIdx", "KPHOC(2)-1: index of second decay product", PhotonConv_secondDaughterIdx_);
+    MakeField(model, "PhotonConv_simPhotonIdx",      "KPHOC(3)-1: index of simulated photon (MC only)", PhotonConv_simPhotonIdx_);
+    MakeField(model, "PhotonConv_pairType",          "KPHOC(4): -21/-22/-23 = 2-TPC I/II/III, -24 = 1-TPC I", PhotonConv_pairType_);
+    MakeField(model, "PhotonConv_fourMomentum",      "QPHOC(5..8): photon 4-momentum at conversion", PhotonConv_fourMomentum_);
+    MakeField(model, "PhotonConv_trackLength",       "QPHOC(9): photon track length beam spot → conversion", PhotonConv_trackLength_);
+    MakeField(model, "PhotonConv_vertex",            "QPHOC(10..12): conversion vertex (cm)", PhotonConv_vertex_);
+}
+
+void NanoAODWriter::fillPhotonConv()
+{
+    PhotonConv_firstDaughterIdx_->clear();
+    PhotonConv_secondDaughterIdx_->clear();
+    PhotonConv_simPhotonIdx_->clear();
+    PhotonConv_pairType_->clear();
+    PhotonConv_fourMomentum_->clear();
+    PhotonConv_trackLength_->clear();
+    PhotonConv_vertex_->clear();
+
+    const int n = sk::NPHOC;
+    for (int i = 1; i <= n; ++i)
+    {
+        PhotonConv_firstDaughterIdx_->push_back(static_cast<int16_t>(sk::KPHOC(1, i) - 1));
+        PhotonConv_secondDaughterIdx_->push_back(static_cast<int16_t>(sk::KPHOC(2, i) - 1));
+        PhotonConv_simPhotonIdx_->push_back(static_cast<int16_t>(sk::KPHOC(3, i) - 1));
+        PhotonConv_pairType_->push_back(static_cast<int8_t>(sk::KPHOC(4, i)));
+        PhotonConv_fourMomentum_->push_back(XYZTVectorF(
+            sk::QPHOC(5, i), sk::QPHOC(6, i), sk::QPHOC(7, i), sk::QPHOC(8, i)));
+        PhotonConv_trackLength_->push_back(sk::QPHOC(9, i));
+        PhotonConv_vertex_->push_back(XYZPointF(
+            sk::QPHOC(10, i), sk::QPHOC(11, i), sk::QPHOC(12, i)));
+    }
+    *nPhotonConv_ = static_cast<int16_t>(PhotonConv_firstDaughterIdx_->size());
+}
+
+// -----------------------------------------------------------------------------
+// Unassociated track-element (UTER) collection — PSCTER/OD + FCA + FCB merged.
+// For particle-flow reco: lowest-level "hits-like" objects that SKELANA surfaces.
+// Per-cell calorimeter hits are not here (SKELANA aggregates to cluster level);
+// that would need a PHDST-level reader bypassing SKELANA.
+// -----------------------------------------------------------------------------
+void NanoAODWriter::defineUter(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nUter",               "Number of unassociated track elements (OD + FCA + FCB)", nUter_);
+    MakeField(model, "Uter_detector",       "0 = OD, 1 = FCA, 2 = FCB", Uter_detector_);
+    MakeField(model, "Uter_dataDescriptor", "K..(1): data descriptor + measurement code <TER(04)>", Uter_dataDescriptor_);
+    MakeField(model, "Uter_coord1",         "Q..(2): coordinate 1 <TER(10)>", Uter_coord1_);
+    MakeField(model, "Uter_coord2",         "Q..(3): coordinate 2 <TER(11)>", Uter_coord2_);
+    MakeField(model, "Uter_coord3",         "Q..(4): coordinate 3 <TER(12)>", Uter_coord3_);
+    MakeField(model, "Uter_theta",          "Q..(5): theta at reference point", Uter_theta_);
+    MakeField(model, "Uter_phi",            "Q..(6): phi at reference point", Uter_phi_);
+    MakeField(model, "Uter_invPOrPt",       "Q..(7): 1/P or 1/Pt at reference point", Uter_invPOrPt_);
+    MakeField(model, "Uter_elementLength",  "Q..(8): length of the track element", Uter_elementLength_);
+}
+
+void NanoAODWriter::fillUter()
+{
+    Uter_detector_->clear();
+    Uter_dataDescriptor_->clear();
+    Uter_coord1_->clear();
+    Uter_coord2_->clear();
+    Uter_coord3_->clear();
+    Uter_theta_->clear();
+    Uter_phi_->clear();
+    Uter_invPOrPt_->clear();
+    Uter_elementLength_->clear();
+
+    for (int i = 1; i <= sk::NTEOD; ++i)
+    {
+        Uter_detector_->push_back(0);
+        Uter_dataDescriptor_->push_back(sk::KTEOD(1, i));
+        Uter_coord1_->push_back(sk::QTEOD(2, i));
+        Uter_coord2_->push_back(sk::QTEOD(3, i));
+        Uter_coord3_->push_back(sk::QTEOD(4, i));
+        Uter_theta_->push_back(sk::QTEOD(5, i));
+        Uter_phi_->push_back(sk::QTEOD(6, i));
+        Uter_invPOrPt_->push_back(sk::QTEOD(7, i));
+        Uter_elementLength_->push_back(sk::QTEOD(8, i));
+    }
+    for (int i = 1; i <= sk::NTEFCA; ++i)
+    {
+        Uter_detector_->push_back(1);
+        Uter_dataDescriptor_->push_back(sk::KTEFCA(1, i));
+        Uter_coord1_->push_back(sk::QTEFCA(2, i));
+        Uter_coord2_->push_back(sk::QTEFCA(3, i));
+        Uter_coord3_->push_back(sk::QTEFCA(4, i));
+        Uter_theta_->push_back(sk::QTEFCA(5, i));
+        Uter_phi_->push_back(sk::QTEFCA(6, i));
+        Uter_invPOrPt_->push_back(sk::QTEFCA(7, i));
+        Uter_elementLength_->push_back(sk::QTEFCA(8, i));
+    }
+    for (int i = 1; i <= sk::NTEFCB; ++i)
+    {
+        Uter_detector_->push_back(2);
+        Uter_dataDescriptor_->push_back(sk::KTEFCB(1, i));
+        Uter_coord1_->push_back(sk::QTEFCB(2, i));
+        Uter_coord2_->push_back(sk::QTEFCB(3, i));
+        Uter_coord3_->push_back(sk::QTEFCB(4, i));
+        Uter_theta_->push_back(sk::QTEFCB(5, i));
+        Uter_phi_->push_back(sk::QTEFCB(6, i));
+        Uter_invPOrPt_->push_back(sk::QTEFCB(7, i));
+        Uter_elementLength_->push_back(sk::QTEFCB(8, i));
+    }
+
+    *nUter_ = static_cast<int16_t>(Uter_detector_->size());
+}
+
+// -----------------------------------------------------------------------------
+// V0 collection (SKELANA A.1.5 PSCRV0 + A.1.6 PSCHV0).
+//
+// Guarded by IFLRV0 > 0. Emits one row per reconstructed V0 in V0_*, plus a
+// flat V0Hyp_* side table with up to 8 fit hypotheses per V0 (rows linked back
+// via V0Hyp_v0Idx). Hypothesis kinds: 1/2 = VTX(+DIR) no mass constraint,
+// 11/12 = K0, 21/22 = Lambda, 31/32 = anti-Lambda, -1 = failed.
+// -----------------------------------------------------------------------------
+void NanoAODWriter::defineV0(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nV0", "Number of reconstructed V0s (PSCRV0)", nV0_);
+    MakeField(model, "V0_firstPartIdx",  "Index into Part_* of the + daughter", V0_firstPartIdx_);
+    MakeField(model, "V0_secondPartIdx", "Index into Part_* of the - daughter", V0_secondPartIdx_);
+    MakeField(model, "V0_incomingIdx",   "Index of incoming particle (-1 if none)", V0_incomingIdx_);
+    MakeField(model, "V0_mcIncomingIdx", "Index of MC incoming particle (-1 if none)", V0_mcIncomingIdx_);
+    MakeField(model, "V0_tagFlag",       "KRV0(5) bit mask: 0=loose, 1=tight, 2=K0bkg, 3=Lbkg, 22=K0, 33=Lambda", V0_tagFlag_);
+    MakeField(model, "V0_momentum",      "QRV0(6): scalar V0 momentum (GeV/c)", V0_momentum_);
+    MakeField(model, "V0_vertexChi2Prob","QRV0(7): chi2 probability of PXFVTX fit", V0_vertexChi2Prob_);
+    MakeField(model, "V0_vertex",        "QRV0(8..10): V0 vertex position (cm)", V0_vertex_);
+    MakeField(model, "V0_xyFlightDistanceOverError", "QRV0(11): xy flight distance normalized to its error", V0_xyFlightDistanceOverError_);
+    MakeField(model, "V0_xyFlightAngle", "QRV0(12): angle (rad) in xy w.r.t. primary-vertex line", V0_xyFlightAngle_);
+    MakeField(model, "V0_pPlus",         "QRV0(13..15): post-fit + daughter 3-momentum (GeV/c)", V0_pPlus_);
+    MakeField(model, "V0_pMinus",        "QRV0(16..18): post-fit - daughter 3-momentum (GeV/c)", V0_pMinus_);
+    MakeField(model, "V0_suggestedMass", "QRV0(19): suggested V0 mass (negative for antiparticle)", V0_suggestedMass_);
+    MakeField(model, "V0_impactEps",     "QRV0(20): epsilon impact parameter of the neutral track", V0_impactEps_);
+    MakeField(model, "V0_impactZ",       "QRV0(21): Z impact parameter of the neutral track", V0_impactZ_);
+    MakeField(model, "V0_neutralTheta",  "QRV0(22): theta of the neutral track", V0_neutralTheta_);
+    MakeField(model, "V0_neutralPhi",    "QRV0(23): phi of the neutral track", V0_neutralPhi_);
+
+    MakeField(model, "nV0Hyp",               "Number of V0 hypothesis rows (flattened)", nV0Hyp_);
+    MakeField(model, "V0Hyp_v0Idx",          "Index into V0_*", V0Hyp_v0Idx_);
+    MakeField(model, "V0Hyp_slot",           "Slot 1..8 in PSCHV0 (n in the manual)", V0Hyp_slot_);
+    MakeField(model, "V0Hyp_kind",           "KRV0Hn(1): 1,2,11,12,21,22,31,32 or -1=failed", V0Hyp_kind_);
+    MakeField(model, "V0Hyp_probability",    "QRV0Hn(2): fit probability", V0Hyp_probability_);
+    MakeField(model, "V0Hyp_vertex",         "QRV0Hn(3..5): fitted V0 vertex", V0Hyp_vertex_);
+    MakeField(model, "V0Hyp_momentum",       "QRV0Hn(6..8): fitted V0 3-momentum", V0Hyp_momentum_);
+    MakeField(model, "V0Hyp_impactXY",       "QRV0Hn(9):  impact xy", V0Hyp_impactXY_);
+    MakeField(model, "V0Hyp_impactXYErr",    "QRV0Hn(10): error of impact xy", V0Hyp_impactXYErr_);
+    MakeField(model, "V0Hyp_impactZ",        "QRV0Hn(11): impact z", V0Hyp_impactZ_);
+    MakeField(model, "V0Hyp_impactZErr",     "QRV0Hn(12): error of impact z", V0Hyp_impactZErr_);
+    MakeField(model, "V0Hyp_impact3D",       "QRV0Hn(13): impact 3D", V0Hyp_impact3D_);
+    MakeField(model, "V0Hyp_impact3DErr",    "QRV0Hn(14): error of impact 3D", V0Hyp_impact3DErr_);
+}
+
+void NanoAODWriter::fillV0()
+{
+    V0_firstPartIdx_->clear();
+    V0_secondPartIdx_->clear();
+    V0_incomingIdx_->clear();
+    V0_mcIncomingIdx_->clear();
+    V0_tagFlag_->clear();
+    V0_momentum_->clear();
+    V0_vertexChi2Prob_->clear();
+    V0_vertex_->clear();
+    V0_xyFlightDistanceOverError_->clear();
+    V0_xyFlightAngle_->clear();
+    V0_pPlus_->clear();
+    V0_pMinus_->clear();
+    V0_suggestedMass_->clear();
+    V0_impactEps_->clear();
+    V0_impactZ_->clear();
+    V0_neutralTheta_->clear();
+    V0_neutralPhi_->clear();
+
+    V0Hyp_v0Idx_->clear();
+    V0Hyp_slot_->clear();
+    V0Hyp_kind_->clear();
+    V0Hyp_probability_->clear();
+    V0Hyp_vertex_->clear();
+    V0Hyp_momentum_->clear();
+    V0Hyp_impactXY_->clear();
+    V0Hyp_impactXYErr_->clear();
+    V0Hyp_impactZ_->clear();
+    V0Hyp_impactZErr_->clear();
+    V0Hyp_impact3D_->clear();
+    V0Hyp_impact3DErr_->clear();
+
+    const int nV0 = sk::NRV0;
+    for (int i = 1; i <= nV0; ++i)
+    {
+        V0_firstPartIdx_->push_back(static_cast<int16_t>(sk::KRV0(1, i) - 1));
+        V0_secondPartIdx_->push_back(static_cast<int16_t>(sk::KRV0(2, i) - 1));
+        V0_incomingIdx_->push_back(static_cast<int16_t>(sk::KRV0(3, i) - 1));
+        V0_mcIncomingIdx_->push_back(static_cast<int16_t>(sk::KRV0(4, i) - 1));
+        V0_tagFlag_->push_back(sk::KRV0(5, i));
+        V0_momentum_->push_back(sk::QRV0(6, i));
+        V0_vertexChi2Prob_->push_back(sk::QRV0(7, i));
+        V0_vertex_->push_back(XYZPointF(sk::QRV0(8, i), sk::QRV0(9, i), sk::QRV0(10, i)));
+        V0_xyFlightDistanceOverError_->push_back(sk::QRV0(11, i));
+        V0_xyFlightAngle_->push_back(sk::QRV0(12, i));
+        V0_pPlus_->push_back(XYZVectorF(sk::QRV0(13, i), sk::QRV0(14, i), sk::QRV0(15, i)));
+        V0_pMinus_->push_back(XYZVectorF(sk::QRV0(16, i), sk::QRV0(17, i), sk::QRV0(18, i)));
+        V0_suggestedMass_->push_back(sk::QRV0(19, i));
+        V0_impactEps_->push_back(sk::QRV0(20, i));
+        V0_impactZ_->push_back(sk::QRV0(21, i));
+        V0_neutralTheta_->push_back(sk::QRV0(22, i));
+        V0_neutralPhi_->push_back(sk::QRV0(23, i));
+
+        // Hypothesis kind codes, indexed by slot 1..8.
+        static const int slot_kind_expected[8] = {1, 2, 11, 12, 21, 22, 31, 32};
+        for (int n = 1; n <= 8; ++n)
+        {
+            int kind = sk::KRV0H(n, 1, i);
+            // Emit every slot (including failed) so the table has fixed shape
+            // per V0; downstream code filters on kind != -1.
+            V0Hyp_v0Idx_->push_back(static_cast<int16_t>(i - 1));
+            V0Hyp_slot_->push_back(static_cast<int8_t>(n));
+            V0Hyp_kind_->push_back(static_cast<int8_t>(kind));
+            V0Hyp_probability_->push_back(sk::QRV0H(n, 2, i));
+            V0Hyp_vertex_->push_back(XYZPointF(
+                sk::QRV0H(n, 3, i), sk::QRV0H(n, 4, i), sk::QRV0H(n, 5, i)));
+            V0Hyp_momentum_->push_back(XYZVectorF(
+                sk::QRV0H(n, 6, i), sk::QRV0H(n, 7, i), sk::QRV0H(n, 8, i)));
+            V0Hyp_impactXY_->push_back(sk::QRV0H(n,  9, i));
+            V0Hyp_impactXYErr_->push_back(sk::QRV0H(n, 10, i));
+            V0Hyp_impactZ_->push_back(sk::QRV0H(n, 11, i));
+            V0Hyp_impactZErr_->push_back(sk::QRV0H(n, 12, i));
+            V0Hyp_impact3D_->push_back(sk::QRV0H(n, 13, i));
+            V0Hyp_impact3DErr_->push_back(sk::QRV0H(n, 14, i));
+            // Sanity: if kind != -1 it should match the slot's expected value.
+            (void)slot_kind_expected;
+        }
+    }
+    *nV0_    = static_cast<int16_t>(V0_firstPartIdx_->size());
+    *nV0Hyp_ = static_cast<int16_t>(V0Hyp_v0Idx_->size());
 }
 
 void NanoAODWriter::defineJet(std::unique_ptr<RNTupleModel> &model)

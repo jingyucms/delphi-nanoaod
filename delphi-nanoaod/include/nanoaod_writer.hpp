@@ -8,6 +8,12 @@
 #include "skelana.hpp"
 #include "skelana/pscvda.hpp"
 #include "skelana/pscvdu.hpp"
+#include "skelana/pscrv0.hpp"
+#include "skelana/pschv0.hpp"
+#include "skelana/pscphc.hpp"
+#include "skelana/pscpho.hpp"
+#include "skelana/pscpi0.hpp"
+#include "skelana/pscter.hpp"
 
 #include <ROOT/RNTuple.hxx>
 #include <ROOT/RNTupleModel.hxx>
@@ -97,6 +103,12 @@ private:
     void fillBtag();
     void definePhoton(std::unique_ptr<RNTupleModel> &model);
     void fillPhoton();
+    void defineV0(std::unique_ptr<RNTupleModel> &model);
+    void fillV0();
+    void definePhotonConv(std::unique_ptr<RNTupleModel> &model);
+    void fillPhotonConv();
+    void defineUter(std::unique_ptr<RNTupleModel> &model);
+    void fillUter();
     void fillPartLoop(particleData& pData, eventData& eData, DataKind cat = DataKind::data);
     void fillSelection(particleData& pData, eventData& eData);
 
@@ -206,6 +218,82 @@ private:
     std::shared_ptr<std::vector<int>>               Photon_sticChargedTag_;  // KSTIC(5) charged-track veto
     std::shared_ptr<std::vector<float>>             Photon_emEnergy_;        // QEMF(8) total EM (FEMC merged)
     std::shared_ptr<std::vector<float>>             Photon_hadEnergy_;       // QHAC(8) leakage for EM/HAD
+
+    // Tier 2 (photon ID in HPC, per-track from PSCPHO / PSCPI0)
+    std::shared_ptr<std::vector<float>>             Photon_hpcEnergyWeightedDepth_;     // QPHOT(1)
+    std::shared_ptr<std::vector<int>>               Photon_hpcPhotNumClusters_;         // KPHOT(2)
+    std::shared_ptr<std::vector<int>>               Photon_hpcPhotFirstLayer_;          // KPHOT(3)
+    std::shared_ptr<std::vector<int>>               Photon_hpcPhotMaxConsecutiveLayers_;// KPHOT(5)
+    std::shared_ptr<std::vector<float>>             Photon_hpcTransverseFluctuation_;   // QPHOT(6)
+    std::shared_ptr<std::vector<float>>             Photon_pi0FittedMass_;              // QPI0(12) — THE π⁰ discriminator
+    std::shared_ptr<std::vector<float>>             Photon_pi0Chi2_;                    // QPI0(22)
+    std::shared_ptr<std::vector<float>>             Photon_pi0GammaChi2_;               // QPI0(24)
+    std::shared_ptr<std::vector<int>>               Photon_pi0NumConnectedMaxima_;      // KPI0(5)
+    std::shared_ptr<std::vector<int>>               Photon_pi0NumExpectedMaxima_;       // KPI0(6)
+    std::shared_ptr<std::vector<float>>             Photon_pi0RelE1stGaussian_;         // QPI0(7)
+
+    // --- Photon-conversion collection (PSCPHC, per-conversion — separate from Photon_*) ---
+    std::shared_ptr<int16_t>                        nPhotonConv_;
+    std::shared_ptr<std::vector<int16_t>>           PhotonConv_firstDaughterIdx_;       // KPHOC(1)-1
+    std::shared_ptr<std::vector<int16_t>>           PhotonConv_secondDaughterIdx_;      // KPHOC(2)-1
+    std::shared_ptr<std::vector<int16_t>>           PhotonConv_simPhotonIdx_;           // KPHOC(3)-1
+    std::shared_ptr<std::vector<int8_t>>            PhotonConv_pairType_;               // KPHOC(4): -21/-22/-23=2-TPC I/II/III, -24=1-TPC
+    std::shared_ptr<std::vector<XYZTVectorF>>       PhotonConv_fourMomentum_;           // QPHOC(5..8)
+    std::shared_ptr<std::vector<float>>             PhotonConv_trackLength_;            // QPHOC(9)
+    std::shared_ptr<std::vector<XYZPointF>>         PhotonConv_vertex_;                 // QPHOC(10..12)
+
+    // --- Unassociated Track Element (UTER) collection (PSCTER, SKELANA A.1.7) ---
+    // Lowest-level hit-like info that SKELANA exposes. For particle-flow reco,
+    // these are track-elements that the standard pattern recognition did NOT
+    // associate with any existing charged track object. Useful as a starting
+    // point for extended PF, MET recovery, forward-pointing γ tracking, etc.
+    // SKELANA does NOT expose per-cell HPC/HAC/STIC calo hits — those are in
+    // raw SDST banks and would need a PHDST-level reader below SKELANA.
+    std::shared_ptr<int16_t>                        nUter_;
+    std::shared_ptr<std::vector<int8_t>>            Uter_detector_;     // 0 = OD, 1 = FCA, 2 = FCB
+    std::shared_ptr<std::vector<int>>               Uter_dataDescriptor_;  // K..(1)
+    std::shared_ptr<std::vector<float>>             Uter_coord1_;       // Q..(2)
+    std::shared_ptr<std::vector<float>>             Uter_coord2_;       // Q..(3)
+    std::shared_ptr<std::vector<float>>             Uter_coord3_;       // Q..(4)
+    std::shared_ptr<std::vector<float>>             Uter_theta_;        // Q..(5)
+    std::shared_ptr<std::vector<float>>             Uter_phi_;          // Q..(6)
+    std::shared_ptr<std::vector<float>>             Uter_invPOrPt_;     // Q..(7)
+    std::shared_ptr<std::vector<float>>             Uter_elementLength_;// Q..(8)
+
+    // --- Reconstructed V0 collection (PSCRV0, SKELANA A.1.5) ---
+    std::shared_ptr<int16_t>                              nV0_;
+    std::shared_ptr<std::vector<int16_t>>                 V0_firstPartIdx_;      // KRV0(1)-1
+    std::shared_ptr<std::vector<int16_t>>                 V0_secondPartIdx_;     // KRV0(2)-1
+    std::shared_ptr<std::vector<int16_t>>                 V0_incomingIdx_;       // KRV0(3)-1 (0 means 'none' — we emit -1)
+    std::shared_ptr<std::vector<int16_t>>                 V0_mcIncomingIdx_;     // KRV0(4)-1
+    std::shared_ptr<std::vector<int>>                     V0_tagFlag_;           // KRV0(5) bitmask (22=K0, 33=Lambda, 0=loose, 1=tight, 2/3=bkg)
+    std::shared_ptr<std::vector<float>>                   V0_momentum_;          // QRV0(6)
+    std::shared_ptr<std::vector<float>>                   V0_vertexChi2Prob_;    // QRV0(7)
+    std::shared_ptr<std::vector<XYZPointF>>               V0_vertex_;            // QRV0(8..10), cm
+    std::shared_ptr<std::vector<float>>                   V0_xyFlightDistanceOverError_;  // QRV0(11)
+    std::shared_ptr<std::vector<float>>                   V0_xyFlightAngle_;     // QRV0(12), rad
+    std::shared_ptr<std::vector<XYZVectorF>>              V0_pPlus_;             // QRV0(13..15), GeV
+    std::shared_ptr<std::vector<XYZVectorF>>              V0_pMinus_;            // QRV0(16..18), GeV
+    std::shared_ptr<std::vector<float>>                   V0_suggestedMass_;     // QRV0(19) (neg for antipart)
+    std::shared_ptr<std::vector<float>>                   V0_impactEps_;         // QRV0(20)
+    std::shared_ptr<std::vector<float>>                   V0_impactZ_;           // QRV0(21)
+    std::shared_ptr<std::vector<float>>                   V0_neutralTheta_;      // QRV0(22)
+    std::shared_ptr<std::vector<float>>                   V0_neutralPhi_;        // QRV0(23)
+
+    // --- V0 hypothesis sub-collection (PSCHV0, up to 8 per V0) ---
+    std::shared_ptr<int16_t>                              nV0Hyp_;
+    std::shared_ptr<std::vector<int16_t>>                 V0Hyp_v0Idx_;          // index into V0_*
+    std::shared_ptr<std::vector<int8_t>>                  V0Hyp_slot_;           // 1..8 (n in the manual)
+    std::shared_ptr<std::vector<int8_t>>                  V0Hyp_kind_;           // 1,2,11,12,21,22,31,32 or -1=failed
+    std::shared_ptr<std::vector<float>>                   V0Hyp_probability_;
+    std::shared_ptr<std::vector<XYZPointF>>               V0Hyp_vertex_;
+    std::shared_ptr<std::vector<XYZVectorF>>              V0Hyp_momentum_;
+    std::shared_ptr<std::vector<float>>                   V0Hyp_impactXY_;
+    std::shared_ptr<std::vector<float>>                   V0Hyp_impactXYErr_;
+    std::shared_ptr<std::vector<float>>                   V0Hyp_impactZ_;
+    std::shared_ptr<std::vector<float>>                   V0Hyp_impactZErr_;
+    std::shared_ptr<std::vector<float>>                   V0Hyp_impact3D_;
+    std::shared_ptr<std::vector<float>>                   V0Hyp_impact3DErr_;
 
     std::shared_ptr<int16_t> nJet_;
     std::shared_ptr<std::vector<XYZTVectorF>> Jet_fourMomentum_;
