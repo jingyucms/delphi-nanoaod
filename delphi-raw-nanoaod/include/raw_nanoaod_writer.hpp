@@ -62,6 +62,12 @@ private:
     void fillMuidEl();      // PA.MUID + PA.ELID -> MuidRaw_* + ElidRaw_*
     void defineTrac(std::unique_ptr<RNTupleModel> &model);
     void fillTrac();        // PA.TRAC + PA.MAIN -> TracRaw_* per charged track
+    void defineTrackElement(std::unique_ptr<RNTupleModel> &model);
+    void fillTrackElement();// PA.{TETP,TEID,TEOD,TEFA,TEFB} -> TrackElement_*
+    void defineVdHit(std::unique_ptr<RNTupleModel> &model);
+    void fillVdHit();       // MVDH (LDTOP-21) -> VdAssocHit_* + VdUnassocHit_*
+    void defineMtpc(std::unique_ptr<RNTupleModel> &model);
+    void fillMtpc();        // PA.MTPC -> MtpcRaw_* (TPC per-track dE/dx etc.)
 
     std::filesystem::path              output_;
     std::unique_ptr<RNTupleWriter>     writer_;
@@ -167,6 +173,60 @@ private:
     std::shared_ptr<std::vector<std::int16_t>>            TracRaw_ndfVD_;         // Q(LMAIN+27)
     std::shared_ptr<std::vector<float>>                   TracRaw_chi2VDHits_;    // Q(LMAIN+18)
     std::shared_ptr<std::vector<std::int8_t>>             TracRaw_charge_;        // sign of Q(LMAIN+8)
+
+    // --- Track elements (M7): per-track-per-sub-detector bank entries.
+    // Shared layout across PA.TETP(TPC), PA.TEID(ID), PA.TEOD(OD),
+    // PA.TEFA(FCA), PA.TEFB(FCB) — see shortdst.des. Each PA track has at
+    // most one TE per sub-detector. We save the 8 header words; the
+    // variable-length error-matrix tail and the PXDST-251+ (nDoF, chi2,
+    // length) footer are NOT saved in this first pass — they need the
+    // measurement-code popcount to locate. If downstream wants them, an
+    // M7+ commit can add a blob field.
+    std::shared_ptr<std::int16_t>                         nTrackElement_;
+    std::shared_ptr<std::vector<std::int16_t>>            TrackElement_tracRawIdx_;
+    std::shared_ptr<std::vector<std::int8_t>>             TrackElement_subDetector_;  // 0=TPC, 1=ID, 2=OD, 3=FCA, 4=FCB
+    std::shared_ptr<std::vector<std::int32_t>>            TrackElement_dataDescriptor_;
+    std::shared_ptr<std::vector<float>>                   TrackElement_coord1_;
+    std::shared_ptr<std::vector<float>>                   TrackElement_coord2_;
+    std::shared_ptr<std::vector<float>>                   TrackElement_coord3_;
+    std::shared_ptr<std::vector<float>>                   TrackElement_theta_;
+    std::shared_ptr<std::vector<float>>                   TrackElement_phi_;
+    std::shared_ptr<std::vector<float>>                   TrackElement_invPOrPt_;
+
+    // --- VD hits (M7): the MVDH event-level bank at LQ(LDTOP - 21).
+    // Per SKELANA PSHVDH (skelana.car L4379) and PSCVDA / PSCVDU
+    // commons (stdcdes.car). Associated hits carry a back-reference to
+    // a PA track bank; we translate that to an index into TracRaw_*.
+    // Unassociated hits live in a flat per-event list.
+    std::shared_ptr<std::int16_t>                         nVdAssocHit_;
+    std::shared_ptr<std::vector<std::int16_t>>            VdAssocHit_tracRawIdx_;
+    std::shared_ptr<std::vector<std::int32_t>>            VdAssocHit_module_;
+    std::shared_ptr<std::vector<float>>                   VdAssocHit_localX_;    // cm
+    std::shared_ptr<std::vector<float>>                   VdAssocHit_R_;
+    std::shared_ptr<std::vector<float>>                   VdAssocHit_RPhi_;
+    std::shared_ptr<std::vector<float>>                   VdAssocHit_signalToNoise_;
+
+    std::shared_ptr<std::int16_t>                         nVdUnassocHit_;
+    std::shared_ptr<std::vector<std::int32_t>>            VdUnassocHit_module_;
+    std::shared_ptr<std::vector<float>>                   VdUnassocHit_localX_;
+    std::shared_ptr<std::vector<float>>                   VdUnassocHit_R_;
+    std::shared_ptr<std::vector<float>>                   VdUnassocHit_RPhi_;
+    std::shared_ptr<std::vector<float>>                   VdUnassocHit_signalToNoise_;
+
+    // --- TPC per-track summary (M7): PA.MTPC(7) -- dE/dx fields + wire /
+    // pad counts. Present on shortDST even though the per-hit TETP bank
+    // is not. Essential input for dE/dx-based particle ID when refitting
+    // tracks or running particle-flow reco.
+    std::shared_ptr<std::int16_t>                         nMtpcRaw_;
+    std::shared_ptr<std::vector<std::int16_t>>            MtpcRaw_tracRawIdx_;
+    std::shared_ptr<std::vector<float>>                   MtpcRaw_dEdx80Max_;        // Q(LMTPC+2) 80% trunc max-amp dE/dx
+    std::shared_ptr<std::vector<float>>                   MtpcRaw_dEdx80Sigma_;      // Q(LMTPC+3)
+    std::shared_ptr<std::vector<float>>                   MtpcRaw_dEdx65Max_;        // Q(LMTPC+4)
+    std::shared_ptr<std::vector<float>>                   MtpcRaw_dEdx65Sigma_;      // Q(LMTPC+5)
+    std::shared_ptr<std::vector<float>>                   MtpcRaw_dEdx80Integrated_; // Q(LMTPC+6)
+    std::shared_ptr<std::vector<std::int32_t>>            MtpcRaw_packedPadsSectors_;// IQ(LMTPC+7)
+    std::shared_ptr<std::vector<std::int32_t>>            MtpcRaw_packedWiresHits_;  // IQ(LMTPC+8)
+    std::shared_ptr<std::vector<float>>                   MtpcRaw_zFitChi2_;         // Q(LMTPC+14)
 };
 
 #endif // RAW_NANOAOD_WRITER_HPP

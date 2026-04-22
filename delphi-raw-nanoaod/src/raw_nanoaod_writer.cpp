@@ -1,7 +1,9 @@
 #include "raw_nanoaod_writer.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <unordered_map>
 
 // -----------------------------------------------------------------------------
 // Field-registration helpers, copied from delphi-nanoaod/src/nanoaod_writer.cpp.
@@ -51,10 +53,14 @@ void RawNanoAODWriter::user00()
     defineStic(model);
     defineMuidEl(model);
     defineTrac(model);
+    defineTrackElement(model);
+    defineVdHit(model);
+    defineMtpc(model);
 
     writer_ = RNTupleWriter::Recreate(std::move(model), "Events", output_.string());
     std::cout << "RawNanoAODWriter: opened " << output_
-              << " (Event, EmShower/Layer, HadShower/Hit, Stic, Muid/ElidRaw, TracRaw)"
+              << " (Event, EmShower/Layer, HadShower/Hit, Stic, Muid/ElidRaw, "
+              << "TracRaw + TrackElement + Vd{Assoc,Unassoc}Hit + MtpcRaw)"
               << std::endl;
 }
 
@@ -72,6 +78,9 @@ void RawNanoAODWriter::user02()
     fillStic();
     fillMuidEl();
     fillTrac();
+    fillTrackElement();
+    fillVdHit();
+    fillMtpc();
     if (!writer_)
     {
         std::cerr << "RawNanoAODWriter::user02: writer_ is null!" << std::endl;
@@ -589,4 +598,265 @@ void RawNanoAODWriter::fillTrac()
         }
     }
     *nTracRaw_ = static_cast<std::int16_t>(TracRaw_paIdx_->size());
+}
+
+// -----------------------------------------------------------------------------
+// Track elements — M7 payload for track refitting. Same layout across
+// PA.TETP(13, TPC), PA.TEID(12, ID), PA.TEOD(14, OD), PA.TEFA(15, FCA),
+// PA.TEFB(16, FCB). Each PA track has at most one TE per sub-detector.
+// See shortdst.des block PA.TETP(13) for the word layout; we save the
+// eight common header words and leave the variable-length error matrix
+// and PXDST-251+ footer (nDoF, chi2, length) as a TODO.
+// -----------------------------------------------------------------------------
+void RawNanoAODWriter::defineTrackElement(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nTrackElement",                 "Per-sub-detector TE rows across all charged tracks",     nTrackElement_);
+    MakeField(model, "TrackElement_tracRawIdx",       "Index into TracRaw_* (same event)",                      TrackElement_tracRawIdx_);
+    MakeField(model, "TrackElement_subDetector",      "0=TPC (TETP), 1=ID (TEID), 2=OD (TEOD), 3=FCA (TEFA), 4=FCB (TEFB)", TrackElement_subDetector_);
+    MakeField(model, "TrackElement_dataDescriptor",   "Q(LTE+2) NINT: RB bitmask, coord system + measurement code", TrackElement_dataDescriptor_);
+    MakeField(model, "TrackElement_coord1",           "Q(LTE+3): X or R at reference point",                    TrackElement_coord1_);
+    MakeField(model, "TrackElement_coord2",           "Q(LTE+4): Y or R*Phi",                                   TrackElement_coord2_);
+    MakeField(model, "TrackElement_coord3",           "Q(LTE+5): Z",                                            TrackElement_coord3_);
+    MakeField(model, "TrackElement_theta",            "Q(LTE+6): theta at reference point",                     TrackElement_theta_);
+    MakeField(model, "TrackElement_phi",              "Q(LTE+7): phi at reference point",                       TrackElement_phi_);
+    MakeField(model, "TrackElement_invPOrPt",         "Q(LTE+8): 1/P or 1/Pt at reference point",               TrackElement_invPOrPt_);
+}
+
+namespace {
+struct TEProbe { const char *name; std::int8_t code; };
+static const TEProbe kTEProbes[] = {
+    {"TETP", 0},   // TPC
+    {"TEID", 1},   // ID
+    {"TEOD", 2},   // OD
+    {"TEFA", 3},   // FCA
+    {"TEFB", 4},   // FCB
+};
+}
+
+void RawNanoAODWriter::fillTrackElement()
+{
+    TrackElement_tracRawIdx_->clear();
+    TrackElement_subDetector_->clear();
+    TrackElement_dataDescriptor_->clear();
+    TrackElement_coord1_->clear();
+    TrackElement_coord2_->clear();
+    TrackElement_coord3_->clear();
+    TrackElement_theta_->clear();
+    TrackElement_phi_->clear();
+    TrackElement_invPOrPt_->clear();
+
+    if (ph::LDTOP <= 0 || TracRaw_paIdx_->empty()) { *nTrackElement_ = 0; return; }
+
+    // We need to match each PA bank to its TracRaw_ index. TracRaw_ was
+    // filled in the same order, guarded on charged tracks. Rather than
+    // re-walking the PV/PA chain twice, iterate in sync.
+    int paIdx = 0;
+    std::size_t tracRow = 0;
+    for (int lpv = ph::LQ(ph::LDTOP - 1); lpv > 0; lpv = ph::LQ(lpv))
+    {
+        for (int lpa = ph::LQ(lpv - 1); lpa > 0; lpa = ph::LQ(lpa), ++paIdx)
+        {
+            // Only rows present in TracRaw_ (i.e. charged tracks) get TE entries.
+            if (tracRow >= TracRaw_paIdx_->size()) break;
+            if ((*TracRaw_paIdx_)[tracRow] != paIdx) continue;
+
+            const std::int16_t thisTracRawIdx = static_cast<std::int16_t>(tracRow);
+            ++tracRow;
+
+            for (const auto &probe : kTEProbes)
+            {
+                int lte = ph::LPHPA(probe.name, lpa, 0);
+                if (lte == 0) continue;
+
+                TrackElement_tracRawIdx_->push_back(thisTracRawIdx);
+                TrackElement_subDetector_->push_back(probe.code);
+                TrackElement_dataDescriptor_->push_back(
+                    static_cast<std::int32_t>(std::lround(ph::Q(lte + 2))));
+                TrackElement_coord1_->push_back(ph::Q(lte + 3));
+                TrackElement_coord2_->push_back(ph::Q(lte + 4));
+                TrackElement_coord3_->push_back(ph::Q(lte + 5));
+                TrackElement_theta_->push_back(ph::Q(lte + 6));
+                TrackElement_phi_->push_back(ph::Q(lte + 7));
+                TrackElement_invPOrPt_->push_back(ph::Q(lte + 8));
+            }
+        }
+    }
+    *nTrackElement_ = static_cast<std::int16_t>(TrackElement_tracRawIdx_->size());
+}
+
+// -----------------------------------------------------------------------------
+// VD hits — M7. The MVDH event-level bank is reached via LQ(LDTOP - 21)
+// (an indirect link on the DST top store). SKELANA walks it in PSHVDH
+// (skelana.car L4379): each associated hit carries a back-pointer
+// LQ(LQMVDH - N) to its parent PA track bank; we translate that to a
+// TracRaw_ index here (-1 if the track was dropped as neutral).
+// After the NVDAS associated hits comes a block of NVDUN unassociated
+// hits, emitted into a separate collection.
+//
+// Words per hit is encoded in IQ(LQMVDH+1) as 1000*NWPH + NVDHT:
+//   NWPH == 4 -> module, localX, R, RPhi
+//   NWPH == 5 -> as above + signalToNoise
+// -----------------------------------------------------------------------------
+void RawNanoAODWriter::defineVdHit(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nVdAssocHit",                 "VD hits associated to a PA track",           nVdAssocHit_);
+    MakeField(model, "VdAssocHit_tracRawIdx",       "Index into TracRaw_*, or -1",                VdAssocHit_tracRawIdx_);
+    MakeField(model, "VdAssocHit_module",           "KVDAS(1): module number with sign of Z",     VdAssocHit_module_);
+    MakeField(model, "VdAssocHit_localX",           "QVDAS(2): local X (or Z since 94) coord (cm)", VdAssocHit_localX_);
+    MakeField(model, "VdAssocHit_R",                "QVDAS(3): R coordinate (-R if R-Z)",         VdAssocHit_R_);
+    MakeField(model, "VdAssocHit_RPhi",             "QVDAS(4): R*Phi (or Z since 94) coord",      VdAssocHit_RPhi_);
+    MakeField(model, "VdAssocHit_signalToNoise",    "QVDAS(5): S/N ratio of the hit (0 if NWPH<=4)", VdAssocHit_signalToNoise_);
+
+    MakeField(model, "nVdUnassocHit",               "VD hits NOT associated to any track",        nVdUnassocHit_);
+    MakeField(model, "VdUnassocHit_module",         "KVDUN(1): module number with sign of Z",     VdUnassocHit_module_);
+    MakeField(model, "VdUnassocHit_localX",         "QVDUN(2): local X / Z (cm)",                 VdUnassocHit_localX_);
+    MakeField(model, "VdUnassocHit_R",              "QVDUN(3): R coord",                          VdUnassocHit_R_);
+    MakeField(model, "VdUnassocHit_RPhi",           "QVDUN(4): R*Phi coord",                      VdUnassocHit_RPhi_);
+    MakeField(model, "VdUnassocHit_signalToNoise",  "QVDUN(5): S/N ratio (0 if NWPH<=4)",         VdUnassocHit_signalToNoise_);
+}
+
+void RawNanoAODWriter::fillVdHit()
+{
+    VdAssocHit_tracRawIdx_->clear();
+    VdAssocHit_module_->clear();
+    VdAssocHit_localX_->clear();
+    VdAssocHit_R_->clear();
+    VdAssocHit_RPhi_->clear();
+    VdAssocHit_signalToNoise_->clear();
+    VdUnassocHit_module_->clear();
+    VdUnassocHit_localX_->clear();
+    VdUnassocHit_R_->clear();
+    VdUnassocHit_RPhi_->clear();
+    VdUnassocHit_signalToNoise_->clear();
+
+    *nVdAssocHit_ = 0;
+    *nVdUnassocHit_ = 0;
+    if (ph::LDTOP <= 0) return;
+    int lqmvdh = ph::LQ(ph::LDTOP - 21);
+    if (lqmvdh <= 0) return;
+
+    int header     = ph::IQ(lqmvdh + 1);
+    int nvdht      = header % 1000;
+    int nwph       = header / 1000;
+    int nvdas      = ph::IQ(lqmvdh - 3);
+
+    // Sanity: SKELANA's tweak for old files that overflowed the 3-digit
+    // NVDHT field. See PSHVDH.
+    if (header == 5000) { nvdht = 1000; nwph = 4; }
+    if (header == 6000) { nvdht = 1000; nwph = 5; }
+
+    // Build a PA-bank-pointer -> TracRaw index mapping for association.
+    // TracRaw_paIdx_ is a 0-based PA index; we need a map LPA -> tracRawIdx.
+    // Rewalk the PV/PA tree to build the LPA -> paIdx map, then cross to
+    // TracRaw_paIdx_ which stores paIdx values in row order.
+    std::unordered_map<int, int> paPointerToTracRawIdx;
+    {
+        int paIdx = 0;
+        std::size_t tracRow = 0;
+        for (int lpv = ph::LQ(ph::LDTOP - 1); lpv > 0; lpv = ph::LQ(lpv))
+        {
+            for (int lpa = ph::LQ(lpv - 1); lpa > 0; lpa = ph::LQ(lpa), ++paIdx)
+            {
+                if (tracRow < TracRaw_paIdx_->size() &&
+                    (*TracRaw_paIdx_)[tracRow] == paIdx)
+                {
+                    paPointerToTracRawIdx[lpa] = static_cast<int>(tracRow);
+                    ++tracRow;
+                }
+            }
+        }
+    }
+
+    int idat = 1;
+    for (int n = 1; n <= nvdas; ++n)
+    {
+        int lpa = ph::LQ(lqmvdh - n);
+        auto it = paPointerToTracRawIdx.find(lpa);
+        std::int16_t tracRawIdx = (it == paPointerToTracRawIdx.end())
+            ? static_cast<std::int16_t>(-1) : static_cast<std::int16_t>(it->second);
+
+        VdAssocHit_tracRawIdx_->push_back(tracRawIdx);
+        VdAssocHit_module_->push_back(static_cast<std::int32_t>(
+            std::lround(ph::Q(lqmvdh + idat + 1))));
+        VdAssocHit_localX_->push_back(ph::Q(lqmvdh + idat + 2));
+        VdAssocHit_R_->push_back(ph::Q(lqmvdh + idat + 3));
+        VdAssocHit_RPhi_->push_back(ph::Q(lqmvdh + idat + 4));
+        VdAssocHit_signalToNoise_->push_back(nwph > 4 ? ph::Q(lqmvdh + idat + 5) : 0.f);
+        idat += nwph;
+    }
+
+    int nvdun = std::max(0, nvdht - nvdas);
+    for (int i = 1; i <= nvdun; ++i)
+    {
+        VdUnassocHit_module_->push_back(static_cast<std::int32_t>(
+            std::lround(ph::Q(lqmvdh + idat + 1))));
+        VdUnassocHit_localX_->push_back(ph::Q(lqmvdh + idat + 2));
+        VdUnassocHit_R_->push_back(ph::Q(lqmvdh + idat + 3));
+        VdUnassocHit_RPhi_->push_back(ph::Q(lqmvdh + idat + 4));
+        VdUnassocHit_signalToNoise_->push_back(nwph > 4 ? ph::Q(lqmvdh + idat + 5) : 0.f);
+        idat += nwph;
+    }
+
+    *nVdAssocHit_   = static_cast<std::int16_t>(VdAssocHit_tracRawIdx_->size());
+    *nVdUnassocHit_ = static_cast<std::int16_t>(VdUnassocHit_module_->size());
+}
+
+// -----------------------------------------------------------------------------
+// TPC per-track summary — PA.MTPC(7). One row per charged track for which
+// MTPC info is present. Layout from shortdst.des line 1894.
+// -----------------------------------------------------------------------------
+void RawNanoAODWriter::defineMtpc(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nMtpcRaw",                   "Rows in MtpcRaw_*",                              nMtpcRaw_);
+    MakeField(model, "MtpcRaw_tracRawIdx",         "Index into TracRaw_*",                           MtpcRaw_tracRawIdx_);
+    MakeField(model, "MtpcRaw_dEdx80Max",          "Q(LMTPC+2): dE/dx, 80% trunc, max amplitude",    MtpcRaw_dEdx80Max_);
+    MakeField(model, "MtpcRaw_dEdx80Sigma",        "Q(LMTPC+3): sigma of the 80%-trunc Landau fit",  MtpcRaw_dEdx80Sigma_);
+    MakeField(model, "MtpcRaw_dEdx65Max",          "Q(LMTPC+4): dE/dx, 65% trunc, max amplitude",    MtpcRaw_dEdx65Max_);
+    MakeField(model, "MtpcRaw_dEdx65Sigma",        "Q(LMTPC+5): sigma of the 65%-trunc Landau fit",  MtpcRaw_dEdx65Sigma_);
+    MakeField(model, "MtpcRaw_dEdx80Integrated",   "Q(LMTPC+6): dE/dx, 80%, integrated amplitude",   MtpcRaw_dEdx80Integrated_);
+    MakeField(model, "MtpcRaw_packedPadsSectors",  "IQ(LMTPC+7): nPads + 100*sectorIn + 10000*sectorOut", MtpcRaw_packedPadsSectors_);
+    MakeField(model, "MtpcRaw_packedWiresHits",    "IQ(LMTPC+8): nWiresCrossed + 1000*nHitsClose + 1000000*method", MtpcRaw_packedWiresHits_);
+    MakeField(model, "MtpcRaw_zFitChi2",           "Q(LMTPC+14): chi2 of the Z-direction fit",       MtpcRaw_zFitChi2_);
+}
+
+void RawNanoAODWriter::fillMtpc()
+{
+    MtpcRaw_tracRawIdx_->clear();
+    MtpcRaw_dEdx80Max_->clear();
+    MtpcRaw_dEdx80Sigma_->clear();
+    MtpcRaw_dEdx65Max_->clear();
+    MtpcRaw_dEdx65Sigma_->clear();
+    MtpcRaw_dEdx80Integrated_->clear();
+    MtpcRaw_packedPadsSectors_->clear();
+    MtpcRaw_packedWiresHits_->clear();
+    MtpcRaw_zFitChi2_->clear();
+
+    if (ph::LDTOP <= 0 || TracRaw_paIdx_->empty()) { *nMtpcRaw_ = 0; return; }
+
+    int paIdx = 0;
+    std::size_t tracRow = 0;
+    for (int lpv = ph::LQ(ph::LDTOP - 1); lpv > 0; lpv = ph::LQ(lpv))
+    {
+        for (int lpa = ph::LQ(lpv - 1); lpa > 0; lpa = ph::LQ(lpa), ++paIdx)
+        {
+            if (tracRow >= TracRaw_paIdx_->size()) break;
+            if ((*TracRaw_paIdx_)[tracRow] != paIdx) continue;
+            const std::int16_t thisTracRawIdx = static_cast<std::int16_t>(tracRow);
+            ++tracRow;
+
+            int lmtpc = ph::LPHPA("MTPC", lpa, 0);
+            if (lmtpc == 0) continue;
+
+            MtpcRaw_tracRawIdx_->push_back(thisTracRawIdx);
+            MtpcRaw_dEdx80Max_->push_back(ph::Q(lmtpc + 2));
+            MtpcRaw_dEdx80Sigma_->push_back(ph::Q(lmtpc + 3));
+            MtpcRaw_dEdx65Max_->push_back(ph::Q(lmtpc + 4));
+            MtpcRaw_dEdx65Sigma_->push_back(ph::Q(lmtpc + 5));
+            MtpcRaw_dEdx80Integrated_->push_back(ph::Q(lmtpc + 6));
+            MtpcRaw_packedPadsSectors_->push_back(ph::IQ(lmtpc + 7));
+            MtpcRaw_packedWiresHits_->push_back(ph::IQ(lmtpc + 8));
+            MtpcRaw_zFitChi2_->push_back(ph::Q(lmtpc + 14));
+        }
+    }
+    *nMtpcRaw_ = static_cast<std::int16_t>(MtpcRaw_tracRawIdx_->size());
 }
