@@ -47,10 +47,14 @@ void RawNanoAODWriter::user00()
     std::unique_ptr<RNTupleModel> model = RNTupleModel::Create();
     defineEvent(model);
     defineEmShower(model);
+    defineHadShower(model);
+    defineStic(model);
+    defineMuidEl(model);
 
     writer_ = RNTupleWriter::Recreate(std::move(model), "Events", output_.string());
-    std::cout << "RawNanoAODWriter: opened " << output_ << " with "
-              << "Event_* + EmShower_* + EmLayer_*" << std::endl;
+    std::cout << "RawNanoAODWriter: opened " << output_
+              << " (Event, EmShower/Layer, HadShower/Hit, Stic, Muid/ElidRaw)"
+              << std::endl;
 }
 
 int RawNanoAODWriter::user01()
@@ -63,6 +67,9 @@ void RawNanoAODWriter::user02()
     super::user02();
     fillEvent();
     fillEmShowers();
+    fillHadShowers();
+    fillStic();
+    fillMuidEl();
     if (!writer_)
     {
         std::cerr << "RawNanoAODWriter::user02: writer_ is null!" << std::endl;
@@ -73,10 +80,13 @@ void RawNanoAODWriter::user02()
     if (++filled <= 5 || filled % 500 == 0)
     {
         std::cout << "RawNanoAODWriter: filled event " << filled
-                  << "  run="   << ph::IIIRUN
-                  << "  evt="   << ph::IIIEVT
-                  << "  nEmS="  << *nEmShower_
-                  << "  nEmL="  << *nEmLayer_
+                  << "  run="    << ph::IIIRUN
+                  << "  evt="    << ph::IIIEVT
+                  << "  nEmS="   << *nEmShower_
+                  << "  nHadS="  << *nHadShower_
+                  << "  nStic="  << *nStic_
+                  << "  nMuid="  << *nMuidRaw_
+                  << "  nElid="  << *nElidRaw_
                   << std::endl;
     }
 }
@@ -242,4 +252,206 @@ void RawNanoAODWriter::fillEmShowers()
 
     *nEmShower_ = static_cast<std::int16_t>(EmShower_paIdx_->size());
     *nEmLayer_  = static_cast<std::int16_t>(EmLayer_emShowerIdx_->size());
+}
+
+// -----------------------------------------------------------------------------
+// Hadronic calorimeter — PA.HCNC (shortDST) per PSHHAC (skelana.car L3442).
+// -----------------------------------------------------------------------------
+void RawNanoAODWriter::defineHadShower(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nHadShower",          "Number of HCAL showers (PA.HCNC)",                   nHadShower_);
+    MakeField(model, "HadShower_paIdx",     "PA-track index in the event (0-based)",              HadShower_paIdx_);
+    MakeField(model, "HadShower_energy",    "Q(LSHOWR+1) shower energy (GeV)",                    HadShower_energy_);
+    MakeField(model, "HadShower_direction", "Q(LSHOWR+2..4) shower 3-direction",                  HadShower_direction_);
+    MakeField(model, "HadShower_nHits",     "Q(LSHOWR+5) number of layer-hit pairs",              HadShower_nHits_);
+    MakeField(model, "HadShower_nHitRows",  "Number of HadHit_* rows emitted for this shower",    HadShower_nHitRows_);
+
+    MakeField(model, "nHadHit",             "Total HadHit rows", nHadHit_);
+    MakeField(model, "HadHit_hadShowerIdx", "Index into HadShower_*",  HadHit_hadShowerIdx_);
+    MakeField(model, "HadHit_layer",        "HAC layer number (1..N_HCAL_LAYERS) from packed Q",  HadHit_layer_);
+    MakeField(model, "HadHit_nTowers",      "Number of towers in this layer-hit from packed Q",   HadHit_nTowers_);
+    MakeField(model, "HadHit_energy",       "Energy of this layer-hit (GeV)",                     HadHit_energy_);
+}
+
+void RawNanoAODWriter::fillHadShowers()
+{
+    HadShower_paIdx_->clear();
+    HadShower_energy_->clear();
+    HadShower_direction_->clear();
+    HadShower_nHits_->clear();
+    HadShower_nHitRows_->clear();
+    HadHit_hadShowerIdx_->clear();
+    HadHit_layer_->clear();
+    HadHit_nTowers_->clear();
+    HadHit_energy_->clear();
+
+    if (ph::LDTOP <= 0) { *nHadShower_ = 0; *nHadHit_ = 0; return; }
+    int paIdx = 0;
+    for (int lpv = ph::LQ(ph::LDTOP - 1); lpv > 0; lpv = ph::LQ(lpv))
+    {
+        for (int lpa = ph::LQ(lpv - 1); lpa > 0; lpa = ph::LQ(lpa), ++paIdx)
+        {
+            int lhcnc = ph::LPHPA("HCNC", lpa, 0);
+            if (lhcnc == 0) continue;
+
+            int nshowr = static_cast<int>(std::lround(ph::Q(lhcnc + 2)));
+            int lshowr = lhcnc + 2;
+
+            for (int ns = 0; ns < nshowr; ++ns)
+            {
+                float e      = ph::Q(lshowr + 1);
+                float px     = ph::Q(lshowr + 2);
+                float py     = ph::Q(lshowr + 3);
+                float pz     = ph::Q(lshowr + 4);
+                int   nhits  = static_cast<int>(std::lround(ph::Q(lshowr + 5)));
+
+                HadShower_paIdx_->push_back(static_cast<std::int16_t>(paIdx));
+                HadShower_energy_->push_back(e);
+                HadShower_direction_->push_back(XYZVectorF(px, py, pz));
+                HadShower_nHits_->push_back(static_cast<std::int16_t>(nhits));
+
+                const std::int16_t showerIdx =
+                    static_cast<std::int16_t>(HadShower_paIdx_->size() - 1);
+
+                int emitted = 0;
+                // Sanity-cap: each hit costs 2 words; a shower's nhits
+                // shouldn't be negative or absurdly large.
+                if (nhits > 0 && nhits < 200)
+                {
+                    for (int nl = 1; nl <= nhits; ++nl)
+                    {
+                        float hitE  = ph::Q(lshowr + 5 + 2*nl - 1);
+                        int   packed = static_cast<int>(std::lround(ph::Q(lshowr + 5 + 2*nl)));
+                        int   layer = packed / 1000;
+                        int   ntow  = packed % 1000;
+
+                        HadHit_hadShowerIdx_->push_back(showerIdx);
+                        HadHit_layer_->push_back(static_cast<std::int8_t>(layer));
+                        HadHit_nTowers_->push_back(static_cast<std::int16_t>(ntow));
+                        HadHit_energy_->push_back(hitE);
+                        ++emitted;
+                    }
+                }
+                HadShower_nHitRows_->push_back(static_cast<std::int16_t>(emitted));
+
+                lshowr += 5 + 2*std::max(0, nhits);
+            }
+        }
+    }
+    *nHadShower_ = static_cast<std::int16_t>(HadShower_paIdx_->size());
+    *nHadHit_    = static_cast<std::int16_t>(HadHit_hadShowerIdx_->size());
+}
+
+// -----------------------------------------------------------------------------
+// STIC — one row per track with a PA.SSTC extra-module, plus MAIN fields.
+// See PSHSTC (skelana.car L4180). We save the commonly-used fields only.
+// -----------------------------------------------------------------------------
+void RawNanoAODWriter::defineStic(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nStic",                   "Number of tracks with a STIC shower (PA.SSTC)", nStic_);
+    MakeField(model, "Stic_paIdx",              "PA-track index",                                Stic_paIdx_);
+    MakeField(model, "Stic_energyFromMain",     "Q(LMAIN+6) energy reported by the MAIN block",  Stic_energyFromMain_);
+    MakeField(model, "Stic_directionFromMain",  "Q(LMAIN+3..5) direction reported by MAIN",      Stic_directionFromMain_);
+    MakeField(model, "Stic_numHitTowers",       "Q(LSSTC+2) encoded tower-hit count (/10)",      Stic_numHitTowers_);
+}
+
+void RawNanoAODWriter::fillStic()
+{
+    Stic_paIdx_->clear();
+    Stic_energyFromMain_->clear();
+    Stic_directionFromMain_->clear();
+    Stic_numHitTowers_->clear();
+
+    if (ph::LDTOP <= 0) { *nStic_ = 0; return; }
+    int paIdx = 0;
+    for (int lpv = ph::LQ(ph::LDTOP - 1); lpv > 0; lpv = ph::LQ(lpv))
+    {
+        for (int lpa = ph::LQ(lpv - 1); lpa > 0; lpa = ph::LQ(lpa), ++paIdx)
+        {
+            int lsstc = ph::LPHPA("SSTC", lpa, 0);
+            if (lsstc == 0) continue;
+
+            int lmain = ph::LPHPA("MAIN", lpa, 0);
+            if (lmain == 0) continue;
+
+            // SSTC payload: header + per-shower block (SKELANA only looks at
+            // the first shower, with the loop commented out in PSHSTC).
+            int lshowr = lsstc + 2;
+
+            Stic_paIdx_->push_back(static_cast<std::int16_t>(paIdx));
+            Stic_energyFromMain_->push_back(ph::Q(lmain + 6));
+            Stic_directionFromMain_->push_back(
+                XYZVectorF(ph::Q(lmain + 3), ph::Q(lmain + 4), ph::Q(lmain + 5)));
+            int rawHitCount = static_cast<int>(std::lround(ph::Q(lshowr + 2) / 10.0));
+            Stic_numHitTowers_->push_back(static_cast<std::int16_t>(rawHitCount));
+        }
+    }
+    *nStic_ = static_cast<std::int16_t>(Stic_paIdx_->size());
+}
+
+// -----------------------------------------------------------------------------
+// Per-track Muon + Electron raw ID (PA.MUID + PA.ELID).
+// Mirrors PSCMUD / PSCELD but emitted by our PHDST reader directly, without
+// going through SKELANA. Useful when the SKELANA-based pipeline is not in
+// play but you still want the standard per-track lepton-ID words.
+// -----------------------------------------------------------------------------
+void RawNanoAODWriter::defineMuidEl(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nMuidRaw",            "Number of tracks with PA.MUID (muon-ID)", nMuidRaw_);
+    MakeField(model, "MuidRaw_paIdx",       "PA-track index",                          MuidRaw_paIdx_);
+    MakeField(model, "MuidRaw_tag",         "Q(LMUID+1) NINT: MUCAL2 tag",             MuidRaw_tag_);
+    MakeField(model, "MuidRaw_looseChi2",   "Q(LMUID+2) global chi2 of very loose refit", MuidRaw_looseChi2_);
+    MakeField(model, "MuidRaw_hitPattern",  "Q(LMUID+3) NINT: hit pattern with inefficiencies", MuidRaw_hitPattern_);
+
+    MakeField(model, "nElidRaw",            "Number of tracks with PA.ELID (electron-ID)", nElidRaw_);
+    MakeField(model, "ElidRaw_paIdx",       "PA-track index",                              ElidRaw_paIdx_);
+    MakeField(model, "ElidRaw_tag",         "Q(LELID+1) NINT: ELECID tag (0..5)",          ElidRaw_tag_);
+    MakeField(model, "ElidRaw_gammaConvTag","Q(LELID+2) NINT: gamma-conversion tag",       ElidRaw_gammaConvTag_);
+    MakeField(model, "ElidRaw_refitMomentum","Q(LELID+3..5): electron refit 3-momentum at vertex", ElidRaw_refitMomentum_);
+}
+
+void RawNanoAODWriter::fillMuidEl()
+{
+    MuidRaw_paIdx_->clear();
+    MuidRaw_tag_->clear();
+    MuidRaw_looseChi2_->clear();
+    MuidRaw_hitPattern_->clear();
+
+    ElidRaw_paIdx_->clear();
+    ElidRaw_tag_->clear();
+    ElidRaw_gammaConvTag_->clear();
+    ElidRaw_refitMomentum_->clear();
+
+    if (ph::LDTOP <= 0) { *nMuidRaw_ = 0; *nElidRaw_ = 0; return; }
+    int paIdx = 0;
+    for (int lpv = ph::LQ(ph::LDTOP - 1); lpv > 0; lpv = ph::LQ(lpv))
+    {
+        for (int lpa = ph::LQ(lpv - 1); lpa > 0; lpa = ph::LQ(lpa), ++paIdx)
+        {
+            int lmuid = ph::LPHPA("MUID", lpa, 0);
+            if (lmuid > 0)
+            {
+                MuidRaw_paIdx_->push_back(static_cast<std::int16_t>(paIdx));
+                MuidRaw_tag_->push_back(
+                    static_cast<std::int32_t>(std::lround(ph::Q(lmuid + 1))));
+                MuidRaw_looseChi2_->push_back(ph::Q(lmuid + 2));
+                MuidRaw_hitPattern_->push_back(
+                    static_cast<std::int32_t>(std::lround(ph::Q(lmuid + 3))));
+            }
+
+            int lelid = ph::LPHPA("ELID", lpa, 0);
+            if (lelid > 0)
+            {
+                ElidRaw_paIdx_->push_back(static_cast<std::int16_t>(paIdx));
+                ElidRaw_tag_->push_back(
+                    static_cast<std::int32_t>(std::lround(ph::Q(lelid + 1))));
+                ElidRaw_gammaConvTag_->push_back(
+                    static_cast<std::int32_t>(std::lround(ph::Q(lelid + 2))));
+                ElidRaw_refitMomentum_->push_back(XYZVectorF(
+                    ph::Q(lelid + 3), ph::Q(lelid + 4), ph::Q(lelid + 5)));
+            }
+        }
+    }
+    *nMuidRaw_ = static_cast<std::int16_t>(MuidRaw_paIdx_->size());
+    *nElidRaw_ = static_cast<std::int16_t>(ElidRaw_paIdx_->size());
 }

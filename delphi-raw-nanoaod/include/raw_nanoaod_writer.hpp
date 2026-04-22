@@ -52,6 +52,12 @@ private:
     void fillEvent();
     void defineEmShower(std::unique_ptr<RNTupleModel> &model);
     void fillEmShowers();   // walks PA banks, emits EmShower_* + EmLayer_*
+    void defineHadShower(std::unique_ptr<RNTupleModel> &model);
+    void fillHadShowers();  // PA.HCNC -> HadShower_* + HadHit_*
+    void defineStic(std::unique_ptr<RNTupleModel> &model);
+    void fillStic();        // PA.SSTC -> Stic_* (one row per track with STIC)
+    void defineMuidEl(std::unique_ptr<RNTupleModel> &model);
+    void fillMuidEl();      // PA.MUID + PA.ELID -> MuidRaw_* + ElidRaw_*
 
     std::filesystem::path              output_;
     std::unique_ptr<RNTupleWriter>     writer_;
@@ -85,6 +91,55 @@ private:
     std::shared_ptr<std::vector<std::int16_t>>            EmLayer_emShowerIdx_;    // index into EmShower_*
     std::shared_ptr<std::vector<std::int8_t>>             EmLayer_layer_;          // 1..NHPLAY (DELPHI convention)
     std::shared_ptr<std::vector<float>>                   EmLayer_energy_;         // per-layer deposit
+
+    // --- Hadronic-calorimeter collections (M3): PA.HCNC shortDST extra-module.
+    // Layout per PSHHAC (skelana.car line 3442): per shower,
+    //   Q(LSHOWR+1) = shower E
+    //   Q(LSHOWR+2..4) = 3-momentum (x, y, z) of the shower direction
+    //   Q(LSHOWR+5) = NLHITS = number of layer-hit pairs
+    //   Q(LSHOWR+5+2*nl-1) = energy of hit nl
+    //   Q(LSHOWR+5+2*nl)   = packed 1000*layer + nTowers
+    // Advance by 5 + 2*NLHITS.
+    std::shared_ptr<std::int16_t>                         nHadShower_;
+    std::shared_ptr<std::vector<std::int16_t>>            HadShower_paIdx_;
+    std::shared_ptr<std::vector<float>>                   HadShower_energy_;
+    std::shared_ptr<std::vector<XYZVectorF>>              HadShower_direction_;
+    std::shared_ptr<std::vector<std::int16_t>>            HadShower_nHits_;
+    std::shared_ptr<std::vector<std::int16_t>>            HadShower_nHitRows_;
+
+    std::shared_ptr<std::int16_t>                         nHadHit_;
+    std::shared_ptr<std::vector<std::int16_t>>            HadHit_hadShowerIdx_;
+    std::shared_ptr<std::vector<std::int8_t>>             HadHit_layer_;     // 1..N_HCAL_LAYERS
+    std::shared_ptr<std::vector<std::int16_t>>            HadHit_nTowers_;
+    std::shared_ptr<std::vector<float>>                   HadHit_energy_;
+
+    // --- STIC small-angle EM collection (M4): PA.SSTC shortDST.
+    // One row per track with a STIC shower (SKELANA's CCC DO NS loop is
+    // commented out so there's effectively one shower per track). No layer
+    // decomposition — STIC is thin enough that SKELANA only keeps totals.
+    std::shared_ptr<std::int16_t>                         nStic_;
+    std::shared_ptr<std::vector<std::int16_t>>            Stic_paIdx_;
+    std::shared_ptr<std::vector<float>>                   Stic_energyFromMain_;   // Q(LMAIN+6)
+    std::shared_ptr<std::vector<XYZVectorF>>              Stic_directionFromMain_;
+    std::shared_ptr<std::vector<std::int16_t>>            Stic_numHitTowers_;
+
+    // --- Muon / Electron per-track raw ID (M5): PA.MUID + PA.ELID records.
+    // Keep it simple — one row per track that has that extra-module present,
+    // carrying the raw ID words. The Muid_* / Elid_* collections in the
+    // SKELANA-based delphi-nanoaod carry the parsed/refitted versions; these
+    // sit alongside them and expose the un-interpreted PSCMUD/PSCELD words
+    // for downstream ML / calibration work.
+    std::shared_ptr<std::int16_t>                         nMuidRaw_;
+    std::shared_ptr<std::vector<std::int16_t>>            MuidRaw_paIdx_;
+    std::shared_ptr<std::vector<std::int32_t>>            MuidRaw_tag_;        // Q(LMUID+1) NINT = tag
+    std::shared_ptr<std::vector<float>>                   MuidRaw_looseChi2_;  // Q(LMUID+2)
+    std::shared_ptr<std::vector<std::int32_t>>            MuidRaw_hitPattern_; // Q(LMUID+3) NINT
+
+    std::shared_ptr<std::int16_t>                         nElidRaw_;
+    std::shared_ptr<std::vector<std::int16_t>>            ElidRaw_paIdx_;
+    std::shared_ptr<std::vector<std::int32_t>>            ElidRaw_tag_;             // Q(LELID+1) NINT
+    std::shared_ptr<std::vector<std::int32_t>>            ElidRaw_gammaConvTag_;    // Q(LELID+2) NINT
+    std::shared_ptr<std::vector<XYZVectorF>>              ElidRaw_refitMomentum_;   // Q(LELID+3..5)
 };
 
 #endif // RAW_NANOAOD_WRITER_HPP
