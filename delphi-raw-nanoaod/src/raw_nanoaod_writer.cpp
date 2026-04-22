@@ -50,10 +50,11 @@ void RawNanoAODWriter::user00()
     defineHadShower(model);
     defineStic(model);
     defineMuidEl(model);
+    defineTrac(model);
 
     writer_ = RNTupleWriter::Recreate(std::move(model), "Events", output_.string());
     std::cout << "RawNanoAODWriter: opened " << output_
-              << " (Event, EmShower/Layer, HadShower/Hit, Stic, Muid/ElidRaw)"
+              << " (Event, EmShower/Layer, HadShower/Hit, Stic, Muid/ElidRaw, TracRaw)"
               << std::endl;
 }
 
@@ -70,6 +71,7 @@ void RawNanoAODWriter::user02()
     fillHadShowers();
     fillStic();
     fillMuidEl();
+    fillTrac();
     if (!writer_)
     {
         std::cerr << "RawNanoAODWriter::user02: writer_ is null!" << std::endl;
@@ -87,6 +89,7 @@ void RawNanoAODWriter::user02()
                   << "  nStic="  << *nStic_
                   << "  nMuid="  << *nMuidRaw_
                   << "  nElid="  << *nElidRaw_
+                  << "  nTrac="  << *nTracRaw_
                   << std::endl;
     }
 }
@@ -454,4 +457,136 @@ void RawNanoAODWriter::fillMuidEl()
     }
     *nMuidRaw_ = static_cast<std::int16_t>(MuidRaw_paIdx_->size());
     *nElidRaw_ = static_cast<std::int16_t>(ElidRaw_paIdx_->size());
+}
+
+// -----------------------------------------------------------------------------
+// Track raw — PA.TRAC + PA.MAIN (per PSHTRA / PSCTRA).
+// One row per charged track. Perigee parameters + weight matrix + track
+// length, chi2, detector flags, first-measured-point, number of d.o.f.
+// Uncharged tracks are filtered out: SKELANA's PSHTRA gates on
+//   IF ( NINT(Q(LMAIN+8)) .NE. 0 )
+// and we do the same.
+// -----------------------------------------------------------------------------
+void RawNanoAODWriter::defineTrac(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nTracRaw",              "Number of charged-track rows (PA.TRAC + PA.MAIN)", nTracRaw_);
+    MakeField(model, "TracRaw_paIdx",         "PA-track index in the event",                      TracRaw_paIdx_);
+    MakeField(model, "TracRaw_impactRPhi",    "QTRAC(4): impact parameter in R-phi",              TracRaw_impactRPhi_);
+    MakeField(model, "TracRaw_impactZ",       "QTRAC(5): impact parameter in Z",                  TracRaw_impactZ_);
+    MakeField(model, "TracRaw_theta",         "QTRAC(6): theta at perigee",                       TracRaw_theta_);
+    MakeField(model, "TracRaw_phi",           "QTRAC(7): phi at perigee",                         TracRaw_phi_);
+    MakeField(model, "TracRaw_invR",          "QTRAC(8): 1/R curvature with sign at perigee",     TracRaw_invR_);
+    MakeField(model, "TracRaw_weightMatrix",  "QTRAC(9..23): 15-element symmetric 5x5 weight matrix", TracRaw_weightMatrix_);
+    MakeField(model, "TracRaw_trackLength",   "|Q(LMAIN+9)|: track length in cm",                 TracRaw_trackLength_);
+    MakeField(model, "TracRaw_detectorsUsed",
+        "IQ(LPA+2): PSCTRA documents this as bits 1-VD, 2-ID, 3-TPC, 4-OD, "
+        "5-FCA, 6-FCB, but on the 100-event Z->hadrons smoke the observed "
+        "distribution had 0 VD / 0 TPC hits and heavy forward-detector "
+        "activity, which is clearly not the physical pattern. Treat this "
+        "field as raw and decode against the actual PSCTRA in your MC "
+        "sample before relying on the bit layout.",
+        TracRaw_detectorsUsed_);
+    MakeField(model, "TracRaw_firstPointR",   "Q(LMAIN+23..24): R of first measured point",       TracRaw_firstPointR_);
+    MakeField(model, "TracRaw_firstPointZ",   "Q(LMAIN+25): Z of first measured point",           TracRaw_firstPointZ_);
+    MakeField(model, "TracRaw_chi2NoVD",      "Q(LMAIN+16): track fit chi2 without VD",           TracRaw_chi2NoVD_);
+    MakeField(model, "TracRaw_chi2VD",        "Q(LMAIN+26): track fit chi2 with VD",              TracRaw_chi2VD_);
+    MakeField(model, "TracRaw_ndfNoVD",       "Q(LMAIN+17): d.o.f. of fit without VD",            TracRaw_ndfNoVD_);
+    MakeField(model, "TracRaw_ndfVD",         "Q(LMAIN+27): d.o.f. of fit with VD",               TracRaw_ndfVD_);
+    MakeField(model, "TracRaw_chi2VDHits",    "Q(LMAIN+18): chi2 of VD-associated hits",          TracRaw_chi2VDHits_);
+    MakeField(model, "TracRaw_charge",        "sign of Q(LMAIN+8): +1 / 0 / -1",                  TracRaw_charge_);
+}
+
+void RawNanoAODWriter::fillTrac()
+{
+    TracRaw_paIdx_->clear();
+    TracRaw_impactRPhi_->clear();
+    TracRaw_impactZ_->clear();
+    TracRaw_theta_->clear();
+    TracRaw_phi_->clear();
+    TracRaw_invR_->clear();
+    TracRaw_weightMatrix_->clear();
+    TracRaw_trackLength_->clear();
+    TracRaw_detectorsUsed_->clear();
+    TracRaw_firstPointR_->clear();
+    TracRaw_firstPointZ_->clear();
+    TracRaw_chi2NoVD_->clear();
+    TracRaw_chi2VD_->clear();
+    TracRaw_ndfNoVD_->clear();
+    TracRaw_ndfVD_->clear();
+    TracRaw_chi2VDHits_->clear();
+    TracRaw_charge_->clear();
+
+    if (ph::LDTOP <= 0) { *nTracRaw_ = 0; return; }
+    int paIdx = 0;
+    for (int lpv = ph::LQ(ph::LDTOP - 1); lpv > 0; lpv = ph::LQ(lpv))
+    {
+        for (int lpa = ph::LQ(lpv - 1); lpa > 0; lpa = ph::LQ(lpa), ++paIdx)
+        {
+            int lmain = ph::LPHPA("MAIN", lpa, 0);
+            if (lmain == 0) continue;
+
+            // DELPHI charge encoding: NINT(Q(LMAIN+8)) == 1 -> +, == 2 -> -,
+            // == 0 -> neutral; anything else is "unknown" (PSHVEC sets 999).
+            int chargeCode = static_cast<int>(std::lround(ph::Q(lmain + 8)));
+            if (chargeCode == 0) continue;   // neutral -- skip (same gate as PSHTRA)
+            std::int8_t signedCharge = (chargeCode == 1) ? 1
+                                     : (chargeCode == 2) ? -1
+                                     : 0;
+
+            int ltrac = ph::LPHPA("TRAC", lpa, 0);
+
+            TracRaw_paIdx_->push_back(static_cast<std::int16_t>(paIdx));
+
+            // Perigee (Q(LTRAC+2..+6) ↔ QTRAC(4..8)) + weight matrix
+            // (LTRAC+7..+21 ↔ QTRAC(9..23)). UCOPY moves 20 floats in PSHTRA.
+            if (ltrac > 0)
+            {
+                TracRaw_impactRPhi_->push_back(ph::Q(ltrac + 2));
+                TracRaw_impactZ_->push_back(ph::Q(ltrac + 3));
+                TracRaw_theta_->push_back(ph::Q(ltrac + 4));
+                TracRaw_phi_->push_back(ph::Q(ltrac + 5));
+                TracRaw_invR_->push_back(ph::Q(ltrac + 6));
+                std::array<float, 15> w{};
+                for (int k = 0; k < 15; ++k) w[k] = ph::Q(ltrac + 7 + k);
+                TracRaw_weightMatrix_->push_back(w);
+            }
+            else
+            {
+                TracRaw_impactRPhi_->push_back(0.f);
+                TracRaw_impactZ_->push_back(0.f);
+                TracRaw_theta_->push_back(0.f);
+                TracRaw_phi_->push_back(0.f);
+                TracRaw_invR_->push_back(0.f);
+                TracRaw_weightMatrix_->push_back(std::array<float, 15>{});
+            }
+
+            // PSHTRA sign-flips track length depending on primary-vertex
+            // participation; we keep the raw magnitude (downstream can
+            // re-apply the convention if it wants).
+            TracRaw_trackLength_->push_back(std::fabs(ph::Q(lmain + 9)));
+            TracRaw_detectorsUsed_->push_back(ph::IQ(lpa + 2));
+
+            // First measured point: R is a 2-norm of (Q+23, Q+24). PSHTRA
+            // uses VMOD(Q(LMAIN+23), 2).
+            float r23 = ph::Q(lmain + 23);
+            float r24 = ph::Q(lmain + 24);
+            TracRaw_firstPointR_->push_back(std::sqrt(r23*r23 + r24*r24));
+            TracRaw_firstPointZ_->push_back(ph::Q(lmain + 25));
+
+            TracRaw_chi2NoVD_->push_back(ph::Q(lmain + 16));
+            TracRaw_chi2VD_->push_back(ph::Q(lmain + 26));
+
+            int ndf1 = static_cast<int>(std::lround(ph::Q(lmain + 17)));
+            int ndf2 = static_cast<int>(std::lround(ph::Q(lmain + 27)));
+            // SKELANA sanitises this: negative or enormous ndof is set to 0.
+            if (ndf1 < 0 || ndf1 > 1000) ndf1 = 0;
+            if (ndf2 < 0 || ndf2 > 1000) ndf2 = 0;
+            TracRaw_ndfNoVD_->push_back(static_cast<std::int16_t>(ndf1));
+            TracRaw_ndfVD_->push_back(static_cast<std::int16_t>(ndf2));
+            TracRaw_chi2VDHits_->push_back(ph::Q(lmain + 18));
+
+            TracRaw_charge_->push_back(signedCharge);
+        }
+    }
+    *nTracRaw_ = static_cast<std::int16_t>(TracRaw_paIdx_->size());
 }

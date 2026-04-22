@@ -14,6 +14,8 @@
 #include "phdst_analysis.hpp"
 #include "phdst.hpp"
 
+#include <array>
+
 #include <ROOT/RNTuple.hxx>
 #include <ROOT/RNTupleModel.hxx>
 #include <ROOT/RNTupleWriter.hxx>
@@ -58,6 +60,8 @@ private:
     void fillStic();        // PA.SSTC -> Stic_* (one row per track with STIC)
     void defineMuidEl(std::unique_ptr<RNTupleModel> &model);
     void fillMuidEl();      // PA.MUID + PA.ELID -> MuidRaw_* + ElidRaw_*
+    void defineTrac(std::unique_ptr<RNTupleModel> &model);
+    void fillTrac();        // PA.TRAC + PA.MAIN -> TracRaw_* per charged track
 
     std::filesystem::path              output_;
     std::unique_ptr<RNTupleWriter>     writer_;
@@ -140,6 +144,29 @@ private:
     std::shared_ptr<std::vector<std::int32_t>>            ElidRaw_tag_;             // Q(LELID+1) NINT
     std::shared_ptr<std::vector<std::int32_t>>            ElidRaw_gammaConvTag_;    // Q(LELID+2) NINT
     std::shared_ptr<std::vector<XYZVectorF>>              ElidRaw_refitMomentum_;   // Q(LELID+3..5)
+
+    // --- Track raw (M6): PA.TRAC + PA.MAIN. One row per charged track
+    // (Q(LMAIN+8) != 0). Follows SKELANA PSHTRA / PSCTRA (stdcdes.car
+    // +KEEP,PSCTRA). The 20-word TRAC payload carries the perigee
+    // parameters and the 15-element symmetric weight matrix.
+    std::shared_ptr<std::int16_t>                         nTracRaw_;
+    std::shared_ptr<std::vector<std::int16_t>>            TracRaw_paIdx_;
+    std::shared_ptr<std::vector<float>>                   TracRaw_impactRPhi_;    // QTRAC( 4)
+    std::shared_ptr<std::vector<float>>                   TracRaw_impactZ_;       // QTRAC( 5)
+    std::shared_ptr<std::vector<float>>                   TracRaw_theta_;         // QTRAC( 6)
+    std::shared_ptr<std::vector<float>>                   TracRaw_phi_;           // QTRAC( 7)
+    std::shared_ptr<std::vector<float>>                   TracRaw_invR_;          // QTRAC( 8)  curvature w/ sign at perigee
+    std::shared_ptr<std::vector<std::array<float, 15>>>   TracRaw_weightMatrix_;  // QTRAC(9..23) 5x5 symmetric
+    std::shared_ptr<std::vector<float>>                   TracRaw_trackLength_;   // |Q(LMAIN+9)| (sign flipped by SKELANA)
+    std::shared_ptr<std::vector<std::int32_t>>            TracRaw_detectorsUsed_; // IQ(LPA+2) bits 1-VD,2-ID,3-TPC,4-OD,5-FCA,6-FCB
+    std::shared_ptr<std::vector<float>>                   TracRaw_firstPointR_;   // |Q(LMAIN+23..24)|
+    std::shared_ptr<std::vector<float>>                   TracRaw_firstPointZ_;   // Q(LMAIN+25)
+    std::shared_ptr<std::vector<float>>                   TracRaw_chi2NoVD_;      // Q(LMAIN+16)
+    std::shared_ptr<std::vector<float>>                   TracRaw_chi2VD_;        // Q(LMAIN+26)
+    std::shared_ptr<std::vector<std::int16_t>>            TracRaw_ndfNoVD_;       // Q(LMAIN+17)
+    std::shared_ptr<std::vector<std::int16_t>>            TracRaw_ndfVD_;         // Q(LMAIN+27)
+    std::shared_ptr<std::vector<float>>                   TracRaw_chi2VDHits_;    // Q(LMAIN+18)
+    std::shared_ptr<std::vector<std::int8_t>>             TracRaw_charge_;        // sign of Q(LMAIN+8)
 };
 
 #endif // RAW_NANOAOD_WRITER_HPP
