@@ -434,7 +434,7 @@ void NanoAODWriter::definePhoton(std::unique_ptr<RNTupleModel> &model)
     MakeField(model, "Photon_hpcParticleCode", "KHPC(4): HPC particle identification code", Photon_hpcParticleCode_);
     MakeField(model, "Photon_sticShowerEnergy", "QSTIC(1): STIC shower energy", Photon_sticShowerEnergy_);
     MakeField(model, "Photon_sticNumTowers", "KSTIC(4): number of STIC towers hit", Photon_sticNumTowers_);
-    MakeField(model, "Photon_sticChargedTag", "KSTIC(5): STIC charged-track veto (0 = clean neutral)", Photon_sticChargedTag_);
+    MakeField(model, "Photon_sticChargedTag", "KSTIC(5): STIC charged-track veto. Code values (SKELANA v1.05 A.3.3): -2 = tight photon, -1 = loose photon, 0 = no information, +1 = electron", Photon_sticChargedTag_);
     MakeField(model, "Photon_emEnergy", "QEMF(8): total EM energy (FEMC/HPC merged)", Photon_emEnergy_);
     MakeField(model, "Photon_hadEnergy", "QHAC(8): HAC leakage, for EM/HAD cut", Photon_hadEnergy_);
 }
