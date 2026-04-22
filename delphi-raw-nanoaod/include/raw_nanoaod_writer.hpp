@@ -17,6 +17,11 @@
 #include <ROOT/RNTuple.hxx>
 #include <ROOT/RNTupleModel.hxx>
 #include <ROOT/RNTupleWriter.hxx>
+#include <Math/Vector3D.h>
+
+using XYZVectorF = ROOT::Math::DisplacementVector3D<
+    ROOT::Math::Cartesian3D<float>,
+    ROOT::Math::DefaultCoordinateSystemTag>;
 
 using RNTupleWriter = ROOT::Experimental::RNTupleWriter;
 using RNTupleModel = ROOT::Experimental::RNTupleModel;
@@ -45,6 +50,8 @@ protected:
 private:
     void defineEvent(std::unique_ptr<RNTupleModel> &model);
     void fillEvent();
+    void defineEmShower(std::unique_ptr<RNTupleModel> &model);
+    void fillEmShowers();   // walks PA banks, emits EmShower_* + EmLayer_*
 
     std::filesystem::path              output_;
     std::unique_ptr<RNTupleWriter>     writer_;
@@ -57,6 +64,27 @@ private:
     std::shared_ptr<int>   Event_date_;
     std::shared_ptr<int>   Event_time_;
     std::shared_ptr<int>   Event_fillNumber_;
+
+    // EM-shower collections (M2).
+    //
+    // Sourced from the EMNC extra-module under every PA (per-track) bank in
+    // the shortDST. Each EMNC may contain 0, 1, ... showers; each shower
+    // unpacks an energy, a position-vector, a 10-bit HPC layer pattern, and
+    // optionally (for HPC showers in older PXDST versions) one per-layer
+    // energy per set bit.
+    std::shared_ptr<std::int16_t>                         nEmShower_;
+    std::shared_ptr<std::vector<std::int16_t>>            EmShower_paIdx_;         // index of source PA track (0-based)
+    std::shared_ptr<std::vector<std::int8_t>>             EmShower_detector_;      // 9 = HPC, 26 = EMF(FEMC)
+    std::shared_ptr<std::vector<float>>                   EmShower_energy_;        // Q(LSHOWR+1)
+    std::shared_ptr<std::vector<XYZVectorF>>              EmShower_position_;      // Q(LSHOWR+2..4) in cm
+    std::shared_ptr<std::vector<std::int16_t>>            EmShower_nLayers_;       // Q(LSHOWR+5)
+    std::shared_ptr<std::vector<std::int32_t>>            EmShower_layerPattern_;  // Q(LSHOWR+6) 10-bit HPC hit pattern
+    std::shared_ptr<std::vector<std::int16_t>>            EmShower_nLayerEnergies_;// number of EmLayer rows for this shower
+
+    std::shared_ptr<std::int16_t>                         nEmLayer_;
+    std::shared_ptr<std::vector<std::int16_t>>            EmLayer_emShowerIdx_;    // index into EmShower_*
+    std::shared_ptr<std::vector<std::int8_t>>             EmLayer_layer_;          // 1..NHPLAY (DELPHI convention)
+    std::shared_ptr<std::vector<float>>                   EmLayer_energy_;         // per-layer deposit
 };
 
 #endif // RAW_NANOAOD_WRITER_HPP
