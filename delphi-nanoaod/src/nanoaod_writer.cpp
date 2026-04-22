@@ -72,6 +72,7 @@ void NanoAODWriter::user00()
 
     defineEvent(model);
     definePart(model);
+    definePhoton(model);
     defineVtx(model);
 
     if (sk::IFLJET > 0)
@@ -167,6 +168,7 @@ void NanoAODWriter::user02()
 
     fillEvent();
     fillPart();
+    fillPhoton();
     fillVtx();
     if (sk::IFLJET > 0)
     {
@@ -403,6 +405,91 @@ void NanoAODWriter::fillPart()
                 { return sk::IPAPV(1, i) - 1; });
     fillVector(Part_decayVtxIdx_, sk::LVPART, sk::NVECP, [](int i)
                 { return sk::IPAPV(2, i) - 1; });
+}
+
+// -----------------------------------------------------------------------------
+// Photon collection (Tier 1).
+//
+// Neutral VECP entries with any calorimeter energy — a photon-*candidate* view
+// of the existing Part_* collection, indexed separately for downstream
+// convenience. No new skelana bindings; this is all derivable from what
+// fillPart already reads. Tier 2 (π0 / converted-photon tags from PSCPHO /
+// PSCPHC) would extend this once the Fortran-side bindings are added; see
+// delphi-nanoaod-photon-plan.md for that follow-up.
+// -----------------------------------------------------------------------------
+void NanoAODWriter::definePhoton(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nPhoton", "Number of neutral EM clusters (photon candidates)", nPhoton_);
+    MakeField(model, "Photon_partIdx", "Index into Part_*", Photon_partIdx_);
+    MakeField(model, "Photon_fourMomentum", "Photon 4-momentum", Photon_fourMomentum_);
+    MakeField(model, "Photon_lock", "SKELANA LVLOCK quality word", Photon_lock_);
+    MakeField(model, "Photon_isHPC", "Fired HPC barrel calorimeter", Photon_isHPC_);
+    MakeField(model, "Photon_isSTIC", "Fired STIC small-angle calorimeter", Photon_isSTIC_);
+    MakeField(model, "Photon_isFEMC", "Fired FEMC endcap (and not HPC/STIC)", Photon_isFEMC_);
+    MakeField(model, "Photon_hpcShowerEnergy", "QHPC(1): energy of most-energetic HPC shower", Photon_hpcShowerEnergy_);
+    MakeField(model, "Photon_hpcTotalShowerEnergy", "QHPC(8): total HPC shower energy associated", Photon_hpcTotalShowerEnergy_);
+    MakeField(model, "Photon_hpcNumLayers", "KHPC(5): number of HPC layers hit (shower depth)", Photon_hpcNumLayers_);
+    MakeField(model, "Photon_hpcLayerHitPattern", "KHPC(6): HPC 9-layer hit pattern", Photon_hpcLayerHitPattern_);
+    MakeField(model, "Photon_hpcNumAssociatedShowers", "KHPC(7): number of associated HPC showers", Photon_hpcNumAssociatedShowers_);
+    MakeField(model, "Photon_hpcParticleCode", "KHPC(4): HPC particle identification code", Photon_hpcParticleCode_);
+    MakeField(model, "Photon_sticShowerEnergy", "QSTIC(1): STIC shower energy", Photon_sticShowerEnergy_);
+    MakeField(model, "Photon_sticNumTowers", "KSTIC(4): number of STIC towers hit", Photon_sticNumTowers_);
+    MakeField(model, "Photon_sticChargedTag", "KSTIC(5): STIC charged-track veto (0 = clean neutral)", Photon_sticChargedTag_);
+    MakeField(model, "Photon_emEnergy", "QEMF(8): total EM energy (FEMC/HPC merged)", Photon_emEnergy_);
+    MakeField(model, "Photon_hadEnergy", "QHAC(8): HAC leakage, for EM/HAD cut", Photon_hadEnergy_);
+}
+
+void NanoAODWriter::fillPhoton()
+{
+    Photon_partIdx_->clear();
+    Photon_fourMomentum_->clear();
+    Photon_lock_->clear();
+    Photon_isHPC_->clear();
+    Photon_isSTIC_->clear();
+    Photon_isFEMC_->clear();
+    Photon_hpcShowerEnergy_->clear();
+    Photon_hpcTotalShowerEnergy_->clear();
+    Photon_hpcNumLayers_->clear();
+    Photon_hpcLayerHitPattern_->clear();
+    Photon_hpcNumAssociatedShowers_->clear();
+    Photon_hpcParticleCode_->clear();
+    Photon_sticShowerEnergy_->clear();
+    Photon_sticNumTowers_->clear();
+    Photon_sticChargedTag_->clear();
+    Photon_emEnergy_->clear();
+    Photon_hadEnergy_->clear();
+
+    for (int i = sk::LVPART; i <= sk::NVECP; ++i)
+    {
+        if (int(sk::VECP(7, i)) != 0) continue;        // charged: skip
+        const float hpcTot = sk::QHPC(8, i);
+        const float sticE  = sk::QSTIC(1, i);
+        const float emfTot = sk::QEMF(8, i);
+        const bool isHPC  = hpcTot > 0.0f;
+        const bool isSTIC = sticE  > 0.0f;
+        const bool isFEMC = emfTot > 0.0f && !isHPC && !isSTIC;
+        if (!(isHPC || isSTIC || isFEMC)) continue;    // no EM energy: not a photon candidate
+
+        Photon_partIdx_->push_back(static_cast<int16_t>(i - sk::LVPART));
+        Photon_fourMomentum_->push_back(XYZTVectorF(
+            sk::VECP(1, i), sk::VECP(2, i), sk::VECP(3, i), sk::VECP(4, i)));
+        Photon_lock_->push_back(sk::LVLOCK(i));
+        Photon_isHPC_->push_back(isHPC);
+        Photon_isSTIC_->push_back(isSTIC);
+        Photon_isFEMC_->push_back(isFEMC);
+        Photon_hpcShowerEnergy_->push_back(sk::QHPC(1, i));
+        Photon_hpcTotalShowerEnergy_->push_back(hpcTot);
+        Photon_hpcNumLayers_->push_back(sk::KHPC(5, i));
+        Photon_hpcLayerHitPattern_->push_back(sk::KHPC(6, i));
+        Photon_hpcNumAssociatedShowers_->push_back(sk::KHPC(7, i));
+        Photon_hpcParticleCode_->push_back(sk::KHPC(4, i));
+        Photon_sticShowerEnergy_->push_back(sticE);
+        Photon_sticNumTowers_->push_back(sk::KSTIC(4, i));
+        Photon_sticChargedTag_->push_back(sk::KSTIC(5, i));
+        Photon_emEnergy_->push_back(emfTot);
+        Photon_hadEnergy_->push_back(sk::QHAC(8, i));
+    }
+    *nPhoton_ = static_cast<int16_t>(Photon_partIdx_->size());
 }
 
 void NanoAODWriter::defineJet(std::unique_ptr<RNTupleModel> &model)

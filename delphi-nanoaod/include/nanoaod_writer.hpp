@@ -95,6 +95,8 @@ private:
     void fillHadid();
     void defineBtag(std::unique_ptr<RNTupleModel> &model);
     void fillBtag();
+    void definePhoton(std::unique_ptr<RNTupleModel> &model);
+    void fillPhoton();
     void fillPartLoop(particleData& pData, eventData& eData, DataKind cat = DataKind::data);
     void fillSelection(particleData& pData, eventData& eData);
 
@@ -181,6 +183,29 @@ private:
     std::shared_ptr<std::vector<int16_t>> Part_simIdx_;
     std::shared_ptr<std::vector<int16_t>> Part_originVtxIdx_;
     std::shared_ptr<std::vector<int16_t>> Part_decayVtxIdx_;
+
+    // --- Photon (Tier 1: neutral EM clusters, derived from existing Part_* commons) ---
+    // Filter: VECP(7,i) == 0 (neutral) AND any of HPC/STIC/FEMC energy > 0.
+    // No new skelana bindings. π0 / converted-photon tags are Tier 2
+    // (PSCPHO / PSCPHC bindings, not implemented here).
+    std::shared_ptr<int16_t>                        nPhoton_;
+    std::shared_ptr<std::vector<int16_t>>           Photon_partIdx_;         // index into Part_*
+    std::shared_ptr<std::vector<XYZTVectorF>>       Photon_fourMomentum_;    // VECP(1..4,i)
+    std::shared_ptr<std::vector<int>>               Photon_lock_;            // LVLOCK quality word
+    std::shared_ptr<std::vector<bool>>              Photon_isHPC_;           // barrel EM (42-138 deg)
+    std::shared_ptr<std::vector<bool>>              Photon_isSTIC_;          // forward small-angle EM
+    std::shared_ptr<std::vector<bool>>              Photon_isFEMC_;          // endcap EM (FEMC), non-HPC/STIC
+    std::shared_ptr<std::vector<float>>             Photon_hpcShowerEnergy_; // QHPC(1) most-energetic
+    std::shared_ptr<std::vector<float>>             Photon_hpcTotalShowerEnergy_; // QHPC(8)
+    std::shared_ptr<std::vector<int>>               Photon_hpcNumLayers_;    // KHPC(5) shower depth
+    std::shared_ptr<std::vector<int>>               Photon_hpcLayerHitPattern_;  // KHPC(6) 9-layer bits
+    std::shared_ptr<std::vector<int>>               Photon_hpcNumAssociatedShowers_; // KHPC(7)
+    std::shared_ptr<std::vector<int>>               Photon_hpcParticleCode_; // KHPC(4)
+    std::shared_ptr<std::vector<float>>             Photon_sticShowerEnergy_;// QSTIC(1)
+    std::shared_ptr<std::vector<int>>               Photon_sticNumTowers_;   // KSTIC(4)
+    std::shared_ptr<std::vector<int>>               Photon_sticChargedTag_;  // KSTIC(5) charged-track veto
+    std::shared_ptr<std::vector<float>>             Photon_emEnergy_;        // QEMF(8) total EM (FEMC merged)
+    std::shared_ptr<std::vector<float>>             Photon_hadEnergy_;       // QHAC(8) leakage for EM/HAD
 
     std::shared_ptr<int16_t> nJet_;
     std::shared_ptr<std::vector<XYZTVectorF>> Jet_fourMomentum_;
