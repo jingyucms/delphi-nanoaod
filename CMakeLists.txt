@@ -33,7 +33,9 @@ FetchContent_MakeAvailable(yaml-cpp)
 
 add_subdirectory(delphi-analysis)
 add_subdirectory(delphi-nanoaod)
+add_subdirectory(delphi-raw-nanoaod)
 
 if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9.0)
     target_link_libraries(delphi-nanoaod stdc++fs)
+    target_link_libraries(delphi-raw-nanoaod stdc++fs)
 endif()
