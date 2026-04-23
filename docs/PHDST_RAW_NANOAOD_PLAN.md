@@ -232,8 +232,28 @@ Rough, honest numbers:
 - Overall "useful for particle flow on HPC": ~1 week of focused work to get
   M0-M2; another 1-2 weeks for the rest.
 
-## Status
+## Status (updated)
 
-Branch `feature/phdst-raw-reader` exists as an empty branch off
-`feature/photon-collection`. This document is the only file on it so far.
-No implementation work has started; this is the plan.
+Branch `feature/phdst-raw-reader` is off `main` (rebased to be independent
+of `feature/photon-collection` per the user's ask), and all planned
+milestones have landed. Summary:
+
+| milestone | status | what it added |
+|---|---|---|
+| M0 | ✓ `e0f98c7` | scaffold, `Event_*` from PHCIII |
+| M1 + M2 | ✓ `f66a5af` | `LPHPA` binding, UXLINK alignment fix, `EmShower_* + EmLayer_*` |
+| M3 + M4 + M5 | ✓ `9d6f4d9` | `HadShower_* + HadHit_*`, `Stic_*`, `MuidRaw_*`, `ElidRaw_*` |
+| M6 | ✓ `b94ce00` | `TracRaw_*` per-track perigee + 5×5 weight matrix |
+| build fix | ✓ `a674a70` | `pscvda.hpp` + `pscvdu.hpp` + FASTJETDIR default |
+| CI | ✓ `3d3ebba` | `.github/workflows/build.yml` |
+| M7 | ✓ `441316c` | VD hit collections, `TrackElement_*` skeleton, `MtpcRaw_*` |
+| M8 | ✓ `2834b31` | `Event_bField*` + inspection macro |
+| straight-line residual demo | ✓ `1ca5926` | first-order RPhi residual in `inspect_tracking.C` |
+| `scripts/make_plots.C` | ✓ `b42d835` | 8 physics-validation PNGs |
+| M9 | ✓ `8fbb8bb` | beamspot + `Vtx_*` + 6 more plots |
+| fadana / shortDST docs | ✓ `8b94eae` | confirm `TrackElement_*` populates on `.fadana` input |
+| `README.md` + this status | in this commit | |
+
+For a hit-level refit, run the reader twice (on `.sdst` and `.fadana`) and
+merge by `(Event_runNumber, Event_eventNumber)`. Every other collection that
+matters for a DELPHI analysis is exposed.
