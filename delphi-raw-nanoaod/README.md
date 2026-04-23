@@ -189,5 +189,8 @@ Delphi-Sim-Pipeline's `container/run_singularity.sh` bind-mounts host
 |---|---|
 | `scripts/inspect_tracking.C` | aggregate tracking statistics: χ²/ndf, VD hits per track, VD \|R\| histogram, TPC dE/dx, straight-line RPhi residual demo |
 | `scripts/make_plots.C` | 14 physics-validation PNGs covering all major collections |
+| `scripts/end_to_end_smoke.sh` | run a full Pythia8 → DELSIM → delphi-raw-nanoaod chain locally (cmssw/el9 singularity + `Delphi-Sim-Pipeline/container/run_singularity.sh`), on both `.sdst` and `.fadana`, and dump a per-collection entry count sanity report |
 
-Both are vanilla ROOT C++ macros — run with `root -l -q -b '<name>("input.root", ...)'`.
+The two `.C` files are vanilla ROOT C++ macros — run with
+`root -l -q -b '<name>("input.root", ...)'`. The smoke test is a bash
+driver; see the header comment in the script for flags and prereqs.
