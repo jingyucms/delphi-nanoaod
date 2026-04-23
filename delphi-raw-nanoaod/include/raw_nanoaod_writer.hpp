@@ -188,6 +188,15 @@ private:
     // length) footer are NOT saved in this first pass — they need the
     // measurement-code popcount to locate. If downstream wants them, an
     // M7+ commit can add a blob field.
+    //
+    // IMPORTANT — fadana vs shortDST: these banks are only populated on
+    // the DELANA "full-DST" output (the .fadana file). The shortDST
+    // (.sdst) produced by shortdst.exe strips them. Correspondingly,
+    // the MVDH VD-hit bank exposed as VdAssocHit_* / VdUnassocHit_*
+    // below is only on the shortDST and is empty on .fadana. For a
+    // complete refit one therefore needs BOTH files. The Delphi-Sim-
+    // Pipeline branch feature/cmssw-el9-base now preserves both so
+    // downstream analyses can merge them by (run, event) number.
     std::shared_ptr<std::int16_t>                         nTrackElement_;
     std::shared_ptr<std::vector<std::int16_t>>            TrackElement_tracRawIdx_;
     std::shared_ptr<std::vector<std::int8_t>>             TrackElement_subDetector_;  // 0=TPC, 1=ID, 2=OD, 3=FCA, 4=FCB

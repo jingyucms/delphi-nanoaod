@@ -140,6 +140,28 @@ Everything above milestone M1 is gated on the bank-access helpers landing
 and being tested. M2 alone is enough to claim "per-layer HPC output ready"
 for particle-flow use.
 
+## fadana vs shortDST — complementary information
+
+DELPHI's reconstruction pipeline generates two artefacts per job:
+
+* **`simana.fadana`** — DELANA's full-DST output. Carries the per-track
+  3-D track elements in `PA.TETP` (TPC), `PA.TEID` (ID), `PA.TEOD` (OD),
+  `PA.TEFA` (FCA), `PA.TEFB` (FCB). This is what `TrackElement_*` reads.
+  It does **not** carry the `MVDH` VD-hit bank at `LQ(LDTOP-21)`.
+* **`simana.sdst`** — `shortdst.exe`'s compressed shortDST. Carries
+  `MVDH` (consumed into `VdAssocHit_*` / `VdUnassocHit_*`). Strips the
+  `PA.TE*` banks entirely.
+
+Both files have the same PHDST on-disk layout, so the same
+`delphi-raw-nanoaod` binary reads either one — the populated collections
+depend on which input you feed it. For a proper hit-based refit run the
+reader twice and merge the two ROOT outputs by
+`(Event_runNumber, Event_eventNumber)`.
+
+`Delphi-Sim-Pipeline` branch `feature/cmssw-el9-base` has been updated
+to preserve `simana.fadana` alongside `simana.sdst` in every job's
+output directory, so this merge is always possible.
+
 ## Out of scope (explicitly)
 
 - **True raw RDST banks.** Only the shortDST (processed) banks are in our
