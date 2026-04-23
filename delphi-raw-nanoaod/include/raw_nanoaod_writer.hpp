@@ -80,6 +80,8 @@ private:
     std::shared_ptr<int>   Event_date_;
     std::shared_ptr<int>   Event_time_;
     std::shared_ptr<int>   Event_fillNumber_;
+    std::shared_ptr<float> Event_bFieldTesla_;   // BTESLA from BPILOT
+    std::shared_ptr<float> Event_bFieldGevCm_;   // BGEVCM from BPILOT — use as 1/R [1/cm] = BGEVCM / pT [GeV]
 
     // EM-shower collections (M2).
     //

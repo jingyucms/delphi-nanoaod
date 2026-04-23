@@ -125,6 +125,8 @@ void RawNanoAODWriter::defineEvent(std::unique_ptr<RNTupleModel> &model)
     MakeField(model, "Event_date",               "IIIDAT: event date (yymmdd)",     Event_date_);
     MakeField(model, "Event_time",               "IIITIM: event time (hhmmss)",     Event_time_);
     MakeField(model, "Event_fillNumber",         "IIFILL: LEP fill number",         Event_fillNumber_);
+    MakeField(model, "Event_bFieldTesla",        "BPILOT output: solenoid B (Tesla)", Event_bFieldTesla_);
+    MakeField(model, "Event_bFieldGevCm",        "BPILOT output: 1/R [1/cm] = BGEVCM / pT [GeV]", Event_bFieldGevCm_);
 }
 
 void RawNanoAODWriter::fillEvent()
@@ -136,6 +138,9 @@ void RawNanoAODWriter::fillEvent()
     *Event_date_               = ph::IIIDAT;
     *Event_time_               = ph::IIITIM;
     *Event_fillNumber_         = ph::IIFILL;
+    auto bfield = ph::BPILOT();
+    *Event_bFieldTesla_ = bfield.first;
+    *Event_bFieldGevCm_ = bfield.second;
 }
 
 // -----------------------------------------------------------------------------
