@@ -56,6 +56,8 @@ void RawNanoAODWriter::user00()
     defineTrackElement(model);
     defineVdHit(model);
     defineMtpc(model);
+    defineBeamSpot(model);
+    defineVtx(model);
 
     writer_ = RNTupleWriter::Recreate(std::move(model), "Events", output_.string());
     std::cout << "RawNanoAODWriter: opened " << output_
@@ -81,6 +83,8 @@ void RawNanoAODWriter::user02()
     fillTrackElement();
     fillVdHit();
     fillMtpc();
+    fillBeamSpot();
+    fillVtx();
     if (!writer_)
     {
         std::cerr << "RawNanoAODWriter::user02: writer_ is null!" << std::endl;
@@ -864,4 +868,123 @@ void RawNanoAODWriter::fillMtpc()
         }
     }
     *nMtpcRaw_ = static_cast<std::int16_t>(MtpcRaw_tracRawIdx_->size());
+}
+
+// -----------------------------------------------------------------------------
+// Beamspot -- event-level scalars from the beam-spot bank at LQ(LDTOP-25).
+// The bank word layout is XYZ (3 floats) + sigma XYZ (3 floats), as reused
+// from DELPHI's PSBEAM (skelana.car L1574). When the bank is absent we set
+// all seven fields to 0 and errorFlag = -1 so downstream can filter.
+// -----------------------------------------------------------------------------
+void RawNanoAODWriter::defineBeamSpot(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "Event_beamSpotX",         "LQ(LDTOP-25)+1: beam spot X (cm)",      Event_beamSpotX_);
+    MakeField(model, "Event_beamSpotY",         "LQ(LDTOP-25)+2: beam spot Y (cm)",      Event_beamSpotY_);
+    MakeField(model, "Event_beamSpotZ",         "LQ(LDTOP-25)+3: beam spot Z (cm)",      Event_beamSpotZ_);
+    MakeField(model, "Event_beamSpotSigmaX",    "LQ(LDTOP-25)+4: beam spot sigma X (cm)", Event_beamSpotSigmaX_);
+    MakeField(model, "Event_beamSpotSigmaY",    "LQ(LDTOP-25)+5: beam spot sigma Y (cm)", Event_beamSpotSigmaY_);
+    MakeField(model, "Event_beamSpotSigmaZ",    "LQ(LDTOP-25)+6: beam spot sigma Z (cm)", Event_beamSpotSigmaZ_);
+    MakeField(model, "Event_beamSpotErrorFlag", "0 if bank present, -1 if missing",      Event_beamSpotErrorFlag_);
+}
+
+void RawNanoAODWriter::fillBeamSpot()
+{
+    *Event_beamSpotX_ = 0.f;
+    *Event_beamSpotY_ = 0.f;
+    *Event_beamSpotZ_ = 0.f;
+    *Event_beamSpotSigmaX_ = 0.f;
+    *Event_beamSpotSigmaY_ = 0.f;
+    *Event_beamSpotSigmaZ_ = 0.f;
+    *Event_beamSpotErrorFlag_ = -1;
+
+    if (ph::LDTOP <= 0) return;
+    int lqspot = ph::LQ(ph::LDTOP - 25);
+    if (lqspot <= 0) return;
+
+    *Event_beamSpotX_      = ph::Q(lqspot + 1);
+    *Event_beamSpotY_      = ph::Q(lqspot + 2);
+    *Event_beamSpotZ_      = ph::Q(lqspot + 3);
+    *Event_beamSpotSigmaX_ = ph::Q(lqspot + 4);
+    *Event_beamSpotSigmaY_ = ph::Q(lqspot + 5);
+    *Event_beamSpotSigmaZ_ = ph::Q(lqspot + 6);
+    *Event_beamSpotErrorFlag_ = 0;
+}
+
+// -----------------------------------------------------------------------------
+// Reconstructed vertices -- PV bank chain starting at LQ(LDTOP-1) and
+// advancing via LQ(LPV). Per PSHVTX (skelana.car L2836), each PV has:
+//   IQ(LPV)      status bitmask  (bits 1 dummy, 2 secondary, 3 sec-hadronic, 4 sim)
+//   IQ(LPV+2)    nOutgoing
+//   IQ(LPV+3)    ndof
+//   Q(LPV+4) NINT  mass code of origin particle
+//   Q(LPV+5..7)    position (cm)
+//   Q(LPV+8)       chi2
+//   Q(LPV+9..14)   3x3 error matrix as (XX, XY, YY, XZ, YZ, ZZ)
+// -----------------------------------------------------------------------------
+void RawNanoAODWriter::defineVtx(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nVtx",           "Number of reconstructed vertices (PV chain from LDTOP-1)", nVtx_);
+    MakeField(model, "Vtx_position",   "Q(LPV+5..7) vertex (X, Y, Z) in cm", Vtx_position_);
+    MakeField(model, "Vtx_chi2",       "Q(LPV+8) vertex fit chi2",           Vtx_chi2_);
+    MakeField(model, "Vtx_ndf",        "IQ(LPV+3) vertex fit ndof",          Vtx_ndf_);
+    MakeField(model, "Vtx_nOutgoing",  "IQ(LPV+2) number of outgoing particles", Vtx_nOutgoing_);
+    MakeField(model, "Vtx_massCode",   "Q(LPV+4) NINT: origin-particle mass code", Vtx_massCode_);
+    MakeField(model, "Vtx_statusBits", "IQ(LPV) status (bit1=dummy, 2=secondary, 3=sec-hadronic, 4=sim)", Vtx_statusBits_);
+    MakeField(model, "Vtx_errXX",      "Q(LPV+9):  error matrix XX", Vtx_errXX_);
+    MakeField(model, "Vtx_errXY",      "Q(LPV+10): error matrix XY", Vtx_errXY_);
+    MakeField(model, "Vtx_errYY",      "Q(LPV+11): error matrix YY", Vtx_errYY_);
+    MakeField(model, "Vtx_errXZ",      "Q(LPV+12): error matrix XZ", Vtx_errXZ_);
+    MakeField(model, "Vtx_errYZ",      "Q(LPV+13): error matrix YZ", Vtx_errYZ_);
+    MakeField(model, "Vtx_errZZ",      "Q(LPV+14): error matrix ZZ", Vtx_errZZ_);
+}
+
+void RawNanoAODWriter::fillVtx()
+{
+    Vtx_position_->clear();
+    Vtx_chi2_->clear();
+    Vtx_ndf_->clear();
+    Vtx_nOutgoing_->clear();
+    Vtx_massCode_->clear();
+    Vtx_statusBits_->clear();
+    Vtx_errXX_->clear();
+    Vtx_errXY_->clear();
+    Vtx_errYY_->clear();
+    Vtx_errXZ_->clear();
+    Vtx_errYZ_->clear();
+    Vtx_errZZ_->clear();
+
+    *nVtx_ = 0;
+    if (ph::LDTOP <= 0) return;
+
+    int lpv = ph::LQ(ph::LDTOP - 1);
+    int count = 0;
+    const int kMax = 150;   // DELPHI's NVTXMX cap
+    while (lpv > 0 && count < kMax)
+    {
+        int status     = ph::IQ(lpv);
+        int nOut       = ph::IQ(lpv + 2);
+        int ndof       = ph::IQ(lpv + 3);
+        int massCode   = static_cast<int>(std::lround(ph::Q(lpv + 4)));
+        float x        = ph::Q(lpv + 5);
+        float y        = ph::Q(lpv + 6);
+        float z        = ph::Q(lpv + 7);
+        float chi2     = ph::Q(lpv + 8);
+
+        Vtx_position_->push_back(XYZVectorF(x, y, z));
+        Vtx_chi2_->push_back(chi2);
+        Vtx_ndf_->push_back(static_cast<std::int16_t>(ndof));
+        Vtx_nOutgoing_->push_back(static_cast<std::int16_t>(nOut));
+        Vtx_massCode_->push_back(massCode);
+        Vtx_statusBits_->push_back(status);
+        Vtx_errXX_->push_back(ph::Q(lpv +  9));
+        Vtx_errXY_->push_back(ph::Q(lpv + 10));
+        Vtx_errYY_->push_back(ph::Q(lpv + 11));
+        Vtx_errXZ_->push_back(ph::Q(lpv + 12));
+        Vtx_errYZ_->push_back(ph::Q(lpv + 13));
+        Vtx_errZZ_->push_back(ph::Q(lpv + 14));
+
+        ++count;
+        lpv = ph::LQ(lpv);
+    }
+    *nVtx_ = static_cast<std::int16_t>(Vtx_position_->size());
 }

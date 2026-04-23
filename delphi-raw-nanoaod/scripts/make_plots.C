@@ -7,11 +7,16 @@
 
 #include "ROOT/RNTuple.hxx"
 #include "ROOT/RNTupleReader.hxx"
+#include "Math/Vector3D.h"
 #include "TCanvas.h"
 #include "TH1F.h"
 #include "TStyle.h"
 #include "TLine.h"
 #include "TLatex.h"
+
+using XYZVectorF = ROOT::Math::DisplacementVector3D<
+    ROOT::Math::Cartesian3D<float>,
+    ROOT::Math::DefaultCoordinateSystemTag>;
 
 #include <algorithm>
 #include <cmath>
@@ -133,6 +138,61 @@ void make_plots(const char *path, const char *outdir = "/tmp/raw_plots",
       txt.DrawLatex(0.55, 0.72, "curvature term");
       txt.DrawLatex(0.55, 0.68, "  O(r^{2}/2R_{c}) ~ 2 mm @ 1 GeV");
       save(c, out, "08_vd_rphi_residual"); }
+
+    // -----------------------------------------------------------------
+    // Extra: vertex + beamspot plots (M9 collections).
+    // -----------------------------------------------------------------
+    auto vNV   = r->GetView<std::int16_t>("nVtx");
+    auto vVpos = r->GetView<std::vector<XYZVectorF>>("Vtx_position");
+    auto vVnO  = r->GetView<std::vector<std::int16_t>>("Vtx_nOutgoing");
+    auto vVst  = r->GetView<std::vector<std::int32_t>>("Vtx_statusBits");
+    auto vBX   = r->GetView<float>("Event_beamSpotX");
+    auto vBY   = r->GetView<float>("Event_beamSpotY");
+    auto vBZ   = r->GetView<float>("Event_beamSpotZ");
+
+    TH1F hNv    ("hNv",    ";vertices / event;events",                   30, -0.5, 29.5);
+    TH1F hVz    ("hVz",    ";vertex Z (cm);vertices",                    80, -40.0, 40.0);
+    TH1F hVrho  ("hVrho",  ";vertex #rho = #sqrt{x^{2}+y^{2}} (cm);vertices",
+                                                                          60, 0.0, 6.0);
+    TH1F hVprim ("hVprim", ";vertex #rho (cm, primary only);vertices",    60, 0.0, 0.2);
+    TH1F hVno   ("hVno",   ";vertex multiplicity (nOutgoing);vertices",   40, 0.5, 40.5);
+    TH1F hBx    ("hBx",    ";beam spot X per event (mm);events",          80, -2.0, 2.0);
+    TH1F hBy    ("hBy",    ";beam spot Y per event (mm);events",          80, -0.5, 0.5);
+    TH1F hBz    ("hBz",    ";beam spot Z per event (mm);events",          80, -5.0, 5.0);
+
+    for (Long64_t i = 0; i < lim; ++i) {
+        hNv.Fill(vNV(i));
+        hBx.Fill(vBX(i) * 10.0);
+        hBy.Fill(vBY(i) * 10.0);
+        hBz.Fill(vBZ(i) * 10.0);
+        const auto &pos = vVpos(i);
+        const auto &nO  = vVnO(i);
+        const auto &st  = vVst(i);
+        for (std::size_t k = 0; k < pos.size(); ++k) {
+            double rho = std::sqrt(pos[k].x()*pos[k].x() + pos[k].y()*pos[k].y());
+            hVz.Fill(pos[k].z());
+            hVrho.Fill(rho);
+            bool isSec = (st[k] & 0b0110) != 0;  // bits 2 or 3
+            bool isDummy = (st[k] & 0b0001) != 0;
+            if (!isSec && !isDummy) hVprim.Fill(rho);
+            hVno.Fill(nO[k]);
+        }
+    }
+
+    { TCanvas c("c","",800,600); hNv.Draw(); save(c, out, "09_vertices_per_event"); }
+    { TCanvas c("c","",800,600); c.SetLogy(); hVz.Draw(); save(c, out, "10_vertex_z"); }
+    { TCanvas c("c","",800,600); c.SetLogy(); hVrho.Draw();
+      TLatex txt; txt.SetNDC(); txt.SetTextSize(0.032);
+      txt.DrawLatex(0.45, 0.82, "primary + secondaries");
+      txt.DrawLatex(0.45, 0.77, "primaries near origin");
+      txt.DrawLatex(0.45, 0.72, "secondaries from V^{0} decays");
+      txt.DrawLatex(0.45, 0.67, "extend to #rho ~ few cm");
+      save(c, out, "11_vertex_rho"); }
+    { TCanvas c("c","",800,600); hVprim.Draw(); save(c, out, "12_vertex_rho_primary"); }
+    { TCanvas c("c","",800,600); c.SetLogy(); hVno.Draw(); save(c, out, "13_vertex_multiplicity"); }
+    { TCanvas c("c","",800,600); c.Divide(1,3);
+      c.cd(1); hBx.Draw(); c.cd(2); hBy.Draw(); c.cd(3); hBz.Draw();
+      save(c, out, "14_beamspot"); }
 
     std::cout << "done -- plots under " << out << std::endl;
 }

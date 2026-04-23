@@ -68,6 +68,10 @@ private:
     void fillVdHit();       // MVDH (LDTOP-21) -> VdAssocHit_* + VdUnassocHit_*
     void defineMtpc(std::unique_ptr<RNTupleModel> &model);
     void fillMtpc();        // PA.MTPC -> MtpcRaw_* (TPC per-track dE/dx etc.)
+    void defineBeamSpot(std::unique_ptr<RNTupleModel> &model);
+    void fillBeamSpot();    // LQ(LDTOP-25) -> Event_beamSpot* scalars
+    void defineVtx(std::unique_ptr<RNTupleModel> &model);
+    void fillVtx();         // LQ(LDTOP-1) walk -> Vtx_* collection
 
     std::filesystem::path              output_;
     std::unique_ptr<RNTupleWriter>     writer_;
@@ -229,6 +233,43 @@ private:
     std::shared_ptr<std::vector<std::int32_t>>            MtpcRaw_packedPadsSectors_;// IQ(LMTPC+7)
     std::shared_ptr<std::vector<std::int32_t>>            MtpcRaw_packedWiresHits_;  // IQ(LMTPC+8)
     std::shared_ptr<std::vector<float>>                   MtpcRaw_zFitChi2_;         // Q(LMTPC+14)
+
+    // --- Beamspot (M9): event-level scalars from LQ(LDTOP-25).
+    // PSBEAM (skelana.car L1574) reads Q(LQSPOT+1..3) = XYZ, Q(LQSPOT+4..6)
+    // = sigma XYZ. When the bank is absent (older data / bad run), SKELANA
+    // falls back to a VDBSPT default; here we only surface what the bank
+    // actually carries, with an errorFlag = 0 "bank present" / -1 "missing".
+    std::shared_ptr<float>                                Event_beamSpotX_;
+    std::shared_ptr<float>                                Event_beamSpotY_;
+    std::shared_ptr<float>                                Event_beamSpotZ_;
+    std::shared_ptr<float>                                Event_beamSpotSigmaX_;
+    std::shared_ptr<float>                                Event_beamSpotSigmaY_;
+    std::shared_ptr<float>                                Event_beamSpotSigmaZ_;
+    std::shared_ptr<std::int8_t>                          Event_beamSpotErrorFlag_;
+
+    // --- Reconstructed vertices (M9): PV-bank chain at LQ(LDTOP-1).
+    // See PSHVTX (skelana.car L2836) for the walk. Each PV contributes one
+    // row. Offsets, all 1-based from LPV:
+    //   IQ(LPV)      status bits (1=dummy, 2=secondary, 3=sec-hadronic, 4=sim)
+    //   IQ(LPV+2)    nOutgoing (multiplicity)
+    //   IQ(LPV+3)    ndof
+    //   Q(LPV+4) NINT  mass code of origin particle
+    //   Q(LPV+5..7)    X, Y, Z
+    //   Q(LPV+8)       chi2
+    //   Q(LPV+9..14)   error matrix (XX, XY, YY, XZ, YZ, ZZ)
+    std::shared_ptr<std::int16_t>                         nVtx_;
+    std::shared_ptr<std::vector<XYZVectorF>>              Vtx_position_;
+    std::shared_ptr<std::vector<float>>                   Vtx_chi2_;
+    std::shared_ptr<std::vector<std::int16_t>>            Vtx_ndf_;
+    std::shared_ptr<std::vector<std::int16_t>>            Vtx_nOutgoing_;
+    std::shared_ptr<std::vector<std::int32_t>>            Vtx_massCode_;
+    std::shared_ptr<std::vector<std::int32_t>>            Vtx_statusBits_;
+    std::shared_ptr<std::vector<float>>                   Vtx_errXX_;
+    std::shared_ptr<std::vector<float>>                   Vtx_errXY_;
+    std::shared_ptr<std::vector<float>>                   Vtx_errYY_;
+    std::shared_ptr<std::vector<float>>                   Vtx_errXZ_;
+    std::shared_ptr<std::vector<float>>                   Vtx_errYZ_;
+    std::shared_ptr<std::vector<float>>                   Vtx_errZZ_;
 };
 
 #endif // RAW_NANOAOD_WRITER_HPP
