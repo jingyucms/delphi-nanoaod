@@ -179,4 +179,69 @@ void inspect_tracking(const char *path, Long64_t max_events = 200)
     const char *eLabels[] = {"0-0.5", "0.5-1", "1-1.5", "1.5-2", "2-3", "3-5", ">5", "==0 (no dE/dx)"};
     for (int k = 0; k < 8; ++k)
         std::cout << "  " << eLabels[k] << ": " << eHist[k] << std::endl;
+
+    // -----------------------------------------------------------------
+    // Straight-line RPhi residual: predicted RPhi at cylinder r_hit is
+    //   RPhi_pred = r_hit * phi0 + d0
+    // to first order in d0/r_hit and ignoring curvature. For a 1 GeV track
+    // in the DELPHI 1.23 T field, the neglected curvature term is
+    // O(r_hit^2 / 2 R_curve) ≈ 2 mm at r_hit = 11 cm. So good residuals
+    // look like a ~ mm-scale Gaussian dominated by curvature plus a ~ μm
+    // tail of the true VD resolution. A full-helix prediction would close
+    // that last factor, but needs the DELPHI sign-of-kappa convention
+    // pinned down; left as a follow-up.
+    // -----------------------------------------------------------------
+    auto vD0_tr  = reader->GetView<std::vector<float>>("TracRaw_impactRPhi");
+    auto vPhi_tr = reader->GetView<std::vector<float>>("TracRaw_phi");
+    auto vTI2    = reader->GetView<std::vector<std::int16_t>>("VdAssocHit_tracRawIdx");
+    auto vHR2    = reader->GetView<std::vector<float>>("VdAssocHit_R");
+    auto vHP2    = reader->GetView<std::vector<float>>("VdAssocHit_RPhi");
+
+    std::vector<double> residuals;
+    for (Long64_t i = 0; i < lim; ++i) {
+        const auto &d0s = vD0_tr(i);
+        const auto &phs = vPhi_tr(i);
+        const auto &ti  = vTI2(i);
+        const auto &hR  = vHR2(i);
+        const auto &hP  = vHP2(i);
+        for (std::size_t k = 0; k < ti.size(); ++k) {
+            int t = ti[k];
+            if (t < 0 || t >= (int)d0s.size()) continue;
+            double r = hR[k];
+            if (r <= 0) continue;          // Z-measuring hits have R < 0
+            double pred = r * phs[t] + d0s[t];
+            double res  = pred - hP[k];
+            double wrap = 2.0 * M_PI * r;
+            while (res >  0.5 * wrap) res -= wrap;
+            while (res < -0.5 * wrap) res += wrap;
+            residuals.push_back(res);
+        }
+    }
+    if (!residuals.empty()) {
+        double mean = 0.0;
+        for (double r : residuals) mean += r;
+        mean /= residuals.size();
+        double var = 0.0;
+        for (double r : residuals) var += (r - mean) * (r - mean);
+        var /= residuals.size();
+        double rms = std::sqrt(var);
+        long w5mm = 0, w2mm = 0, w02mm = 0;
+        for (double r : residuals) {
+            if (std::abs(r) < 0.5)  ++w5mm;
+            if (std::abs(r) < 0.2)  ++w2mm;
+            if (std::abs(r) < 0.02) ++w02mm;
+        }
+        std::cout << std::endl << "Straight-line RPhi residuals (pred = r*phi0 + d0):" << std::endl;
+        std::cout << "  hits used    : " << residuals.size() << std::endl;
+        std::cout << "  mean         : " << mean*1e4 << " um" << std::endl;
+        std::cout << "  RMS          : " << rms *1e4 << " um" << std::endl;
+        std::cout << "  within 5 mm  : " << w5mm  << " ("
+                  << 100.0*w5mm /residuals.size() << " %)" << std::endl;
+        std::cout << "  within 2 mm  : " << w2mm  << " ("
+                  << 100.0*w2mm /residuals.size() << " %)" << std::endl;
+        std::cout << "  within 0.2 mm: " << w02mm << " ("
+                  << 100.0*w02mm/residuals.size() << " %)" << std::endl;
+        std::cout << "  note: O(r^2/2R) curvature term ~ 2 mm at 1 GeV, "
+                  << "7 mm at 300 MeV -- a full helix would tighten RMS." << std::endl;
+    }
 }
