@@ -1,0 +1,90 @@
+name: Build
+
+# Build delphi-nanoaod + delphi-raw-nanoaod inside a cmssw/el9 container
+# with /cvmfs mounted, on every push to main and every PR. No DELSIM run
+# happens here -- we only confirm that the nanoAOD writers compile and
+# link against the CVMFS-hosted DELPHI / LCG releases.
+#
+# Host-lib note: runtime execution of runsim (not done here) needs
+# libgfortran, libXm, libXp, libquadmath bind-mounted from the runner's
+# own /lib64. For the build-only path in this workflow everything comes
+# from /cvmfs, so no host-lib shim is necessary.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build inside cmssw/el9
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mount CVMFS (sft + delphi)
+        uses: cvmfs-contrib/github-action-cvmfs@v4
+        with:
+          cvmfs_repositories: "sft.cern.ch,delphi.cern.ch"
+
+      - name: Warm-up CVMFS caches
+        run: |
+          ls /cvmfs/sft.cern.ch/lcg/views/LCG_107/x86_64-el9-gcc13-opt/ | head -3
+          ls /cvmfs/delphi.cern.ch/releases/almalinux-9-x86_64/latest/ | head -3
+
+      - name: Pull cmssw/el9 image
+        run: docker pull cmssw/el9:x86_64
+
+      - name: Configure + build via CMake
+        run: |
+          mkdir -p build
+          docker run --rm \
+            -v /cvmfs:/cvmfs:ro \
+            -v ${{ github.workspace }}:/work \
+            --workdir /work/build \
+            cmssw/el9:x86_64 bash -c '
+              set -eo pipefail
+              source /cvmfs/delphi.cern.ch/setup.sh > /dev/null 2>&1
+              source /cvmfs/sft.cern.ch/lcg/views/LCG_107/x86_64-el9-gcc13-opt/setup.sh
+
+              echo "=== CMake configure ==="
+              cmake .. 2>&1 | tail -15
+
+              echo "=== Build delphi-analysis ==="
+              make -j$(nproc) delphi-analysis
+
+              # delphi-raw-nanoaod is present only on the phdst-raw-reader branch.
+              if [ -d /work/delphi-raw-nanoaod ]; then
+                  echo "=== Build delphi-raw-nanoaod ==="
+                  make -j$(nproc) delphi-raw-nanoaod
+                  test -x delphi-raw-nanoaod/delphi-raw-nanoaod
+                  echo "PASS: delphi-raw-nanoaod built"
+              fi
+
+              # delphi-nanoaod (skelana-based) requires nypatchy + fastjet; both
+              # come from CVMFS. Try to build; if it fails due to an upstream
+              # build-system quirk on main, emit a warning but do not fail the
+              # workflow.
+              echo "=== Build delphi-nanoaod ==="
+              if make -j$(nproc) delphi-nanoaod; then
+                  test -x delphi-nanoaod/delphi-nanoaod
+                  echo "PASS: delphi-nanoaod built"
+              else
+                  echo "WARN: delphi-nanoaod did not build on this ref"
+                  exit 1
+              fi
+            '
+
+      - name: Quick smoke-check of built binaries
+        run: |
+          if [ -x build/delphi-raw-nanoaod/delphi-raw-nanoaod ]; then
+            ldd build/delphi-raw-nanoaod/delphi-raw-nanoaod | head -5 || true
+          fi
+          if [ -x build/delphi-nanoaod/delphi-nanoaod ]; then
+            ldd build/delphi-nanoaod/delphi-nanoaod | head -5 || true
+          fi
