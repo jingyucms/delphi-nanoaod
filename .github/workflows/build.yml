@@ -12,7 +12,7 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev-fullDST]
   pull_request:
   workflow_dispatch:
 
