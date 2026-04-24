@@ -162,6 +162,30 @@ reader twice and merge the two ROOT outputs by
 to preserve `simana.fadana` alongside `simana.sdst` in every job's
 output directory, so this merge is always possible.
 
+### Real data: a single `.al` is enough
+
+For real data the equivalent long-DST files are the `Y*.al` files under
+`/eos/opendata/delphi/collision-data/YNNNNN/`. Unlike the MC case, a
+single `.al` file carries **both** `MVDH` and `PA.TE*` in the same
+record, so one reader pass populates every collection — no two-file
+merge needed.
+
+Smoke-test harness: `delphi-raw-nanoaod/scripts/smoke_data.sh`.
+It skips the singularity / Pythia / DELSIM stages of
+`end_to_end_smoke.sh`, sources the repo's `setup.sh`, writes a one-line
+PDL input pointing at the chosen `.al`, runs the reader, and prints a
+sanity-report of per-collection sums.
+
+```bash
+source setup.sh
+cmake -B build -DROOT_DIR="$ROOTSYS/cmake" -DCMAKE_PREFIX_PATH="$ROOTSYS"
+cmake --build build --target delphi-raw-nanoaod -j4
+./delphi-raw-nanoaod/scripts/smoke_data.sh           # Y13718.100.al, 100 events
+./delphi-raw-nanoaod/scripts/smoke_data.sh \
+    --al /eos/opendata/delphi/collision-data/Y13710/Y13710.96.al \
+    --events 500
+```
+
 ## Out of scope (explicitly)
 
 - **True raw RDST banks.** Only the shortDST (processed) banks are in our
