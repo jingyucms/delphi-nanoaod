@@ -20,10 +20,14 @@
 #include <ROOT/RNTupleModel.hxx>
 #include <ROOT/RNTupleWriter.hxx>
 #include <Math/Vector3D.h>
+#include <Math/Vector4D.h>
 
 using XYZVectorF = ROOT::Math::DisplacementVector3D<
     ROOT::Math::Cartesian3D<float>,
     ROOT::Math::DefaultCoordinateSystemTag>;
+
+using XYZTVectorF = ROOT::Math::LorentzVector<
+    ROOT::Math::PxPyPzE4D<float>>;
 
 using RNTupleWriter = ROOT::Experimental::RNTupleWriter;
 using RNTupleModel = ROOT::Experimental::RNTupleModel;
@@ -72,6 +76,8 @@ private:
     void fillBeamSpot();    // LQ(LDTOP-25) -> Event_beamSpot* scalars
     void defineVtx(std::unique_ptr<RNTupleModel> &model);
     void fillVtx();         // LQ(LDTOP-1) walk -> Vtx_* collection
+    void defineGenPart(std::unique_ptr<RNTupleModel> &model);
+    void fillGenPart();     // calls SKELANA's PSHMC to fill PSCLUJ, then emits GenPart_*
 
     std::filesystem::path              output_;
     std::unique_ptr<RNTupleWriter>     writer_;
@@ -279,6 +285,25 @@ private:
     std::shared_ptr<std::vector<float>>                   Vtx_errXZ_;
     std::shared_ptr<std::vector<float>>                   Vtx_errYZ_;
     std::shared_ptr<std::vector<float>>                   Vtx_errZZ_;
+
+    // --- MC GEN-truth particle list (Tier A of the MC-truth plan).
+    // Filled by calling SKELANA's PSHMC fortran routine, which populates the
+    // PSCLUJ common block (a LUJETS-like LUND event record) from the DELPHI
+    // simulation banks at LQ(LDTOP-28)/(LDTOP-29) (shortDST) or the
+    // equivalent fullDST banks. Empty on real-data events; Event_isMC is a
+    // convenience scalar so downstream code can gate without counting.
+    std::shared_ptr<std::int8_t>                          Event_isMC_;     // 1 if PSCLUJ populated, 0 otherwise
+    std::shared_ptr<std::int32_t>                         nGenPart_;
+    std::shared_ptr<std::vector<std::int16_t>>            GenPart_status_;       // KP(i,1): JETSET status code
+    std::shared_ptr<std::vector<std::int32_t>>            GenPart_pdgId_;        // KP(i,2): PDG particle code
+    std::shared_ptr<std::vector<std::int32_t>>            GenPart_parentIdx_;    // KP(i,3) - 1, -1 if none
+    std::shared_ptr<std::vector<std::int32_t>>            GenPart_firstChildIdx_;// KP(i,4) - 1
+    std::shared_ptr<std::vector<std::int32_t>>            GenPart_lastChildIdx_; // KP(i,5) - 1
+    std::shared_ptr<std::vector<XYZTVectorF>>             GenPart_fourMomentum_; // PP(i,1..4) (px, py, pz, E) in GeV
+    std::shared_ptr<std::vector<float>>                   GenPart_mass_;         // PP(i,5) in GeV
+    std::shared_ptr<std::vector<XYZVectorF>>              GenPart_vertex_;       // VP(i,1..3) production point (mm)
+    std::shared_ptr<std::vector<float>>                   GenPart_productionTime_;// VP(i,4) production time
+    std::shared_ptr<std::vector<float>>                   GenPart_properLifetime_;// VP(i,5) proper lifetime
 };
 
 #endif // RAW_NANOAOD_WRITER_HPP

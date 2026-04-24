@@ -139,6 +139,38 @@ since the two feature branches are intended to stand alone.
 `PA.MUID` / `PA.ELID`. Tag, loose-refit χ², hit pattern for muons; tag,
 γ-conversion tag, refit 3-momentum for electrons.
 
+### MC truth particle list (`GenPart_*`, `Event_isMC`)
+
+Filled on MC events by calling SKELANA's `PSHMC` fortran routine, which reads
+the simulation banks at `LQ(LDTOP-28)/(LDTOP-29)` (shortDST) or the fullDST
+equivalents and populates the `PSCLUJ` LUJETS-like event record. No other
+SKELANA logic runs — we treat `PSHMC` as a standalone bank-unpacking call.
+Real-data events come out with `Event_isMC=0` and `nGenPart=0`.
+
+Fields mirror the ones the SKELANA-based `delphi-nanoaod` writes in its own
+`GenPart_*` collection, so downstream analysis code can be schema-agnostic
+across the two writers.
+
+| field | source | meaning |
+|---|---|---|
+| `Event_isMC` | `pscluj.np` | 1 if the simulation structure was unpacked this event, 0 otherwise |
+| `nGenPart` | `NP` | number of LUJETS particles in the record |
+| `GenPart_status` | `KP(i,1)` | JETSET status code (1 = final-state stable, 2 = decayed/unstable, 21 = documentation) |
+| `GenPart_pdgId` | `KP(i,2)` | PDG particle code |
+| `GenPart_parentIdx` | `KP(i,3)-1` | parent index, -1 if none |
+| `GenPart_firstChildIdx`, `GenPart_lastChildIdx` | `KP(i,4)-1`, `KP(i,5)-1` | daughter index range |
+| `GenPart_fourMomentum` | `PP(i,1..4)` | (px, py, pz, E) in GeV |
+| `GenPart_mass` | `PP(i,5)` | generator mass (GeV) |
+| `GenPart_vertex` | `VP(i,1..3)` | production vertex (**mm** — LUJETS convention, *not* cm like the reco `Vtx_position`) |
+| `GenPart_productionTime`, `GenPart_properLifetime` | `VP(i,4)`, `VP(i,5)` | generator-level time / lifetime |
+
+For reco↔truth matching the back-pointer currently lives on the analysis
+side: match `TracRaw_*` / `EmShower_*` / etc. to `GenPart_*` by proximity in
+(θ, φ, 1/p). Direct per-hit truth back-pointers (e.g. `VdAssocHit_genPartIdx`)
+would require the simulation-time hit banks and are not included in this
+pass — see the "MC truth" section of `docs/PHDST_RAW_NANOAOD_PLAN.md` for the
+Tier-B plan.
+
 ### Vertices (`Vtx_*`)
 
 From the PV bank chain at `LQ(LDTOP-1)`. Status bits: 1 = dummy, 2 = secondary,
@@ -163,6 +195,7 @@ From the PV bank chain at `LQ(LDTOP-1)`. Status bits: 1 = dummy, 2 = secondary,
 | `Stic_*`, `MuidRaw_*`, `ElidRaw_*`, `MtpcRaw_*` | ✓ | ✓ |
 | `VdAssocHit_*`, `VdUnassocHit_*` (MVDH bank) | **✓** | — |
 | `TrackElement_*` (per-detector 3-D hits) | — | **✓** |
+| `GenPart_*` (MC truth) | ✓ (MC only) | ✓ (MC only) |
 
 For a proper hit-level refit run the reader on **both** files and merge the
 two ROOT outputs by `(Event_runNumber, Event_eventNumber)`.
