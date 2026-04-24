@@ -5,6 +5,17 @@
 #include <iostream>
 #include <unordered_map>
 
+#include "skelana/pscluj.hpp"
+
+namespace sk = skelana;
+
+// PSHMC: SKELANA fortran entry point that reads the DELPHI simulation banks
+// (LQ(LDTOP-28)/(LDTOP-29) on shortDST, the fullDST equivalents otherwise)
+// and populates the PSCLUJ common block with a LUJETS-style event record.
+// We call it from fillGenPart(); we do NOT otherwise run any SKELANA logic
+// from this PHDST-level writer.
+extern "C" void pshmc_();
+
 // -----------------------------------------------------------------------------
 // Field-registration helpers, copied from delphi-nanoaod/src/nanoaod_writer.cpp.
 // Keeping the exact same idiom so the two writers look identical to read.
@@ -58,11 +69,13 @@ void RawNanoAODWriter::user00()
     defineMtpc(model);
     defineBeamSpot(model);
     defineVtx(model);
+    defineGenPart(model);
 
     writer_ = RNTupleWriter::Recreate(std::move(model), "Events", output_.string());
     std::cout << "RawNanoAODWriter: opened " << output_
               << " (Event, EmShower/Layer, HadShower/Hit, Stic, Muid/ElidRaw, "
-              << "TracRaw + TrackElement + Vd{Assoc,Unassoc}Hit + MtpcRaw)"
+              << "TracRaw + TrackElement + Vd{Assoc,Unassoc}Hit + MtpcRaw, "
+              << "GenPart)"
               << std::endl;
 }
 
@@ -85,6 +98,7 @@ void RawNanoAODWriter::user02()
     fillMtpc();
     fillBeamSpot();
     fillVtx();
+    fillGenPart();
     if (!writer_)
     {
         std::cerr << "RawNanoAODWriter::user02: writer_ is null!" << std::endl;
@@ -103,6 +117,8 @@ void RawNanoAODWriter::user02()
                   << "  nMuid="  << *nMuidRaw_
                   << "  nElid="  << *nElidRaw_
                   << "  nTrac="  << *nTracRaw_
+                  << "  isMC="   << static_cast<int>(*Event_isMC_)
+                  << "  nGen="   << *nGenPart_
                   << std::endl;
     }
 }
@@ -131,6 +147,7 @@ void RawNanoAODWriter::defineEvent(std::unique_ptr<RNTupleModel> &model)
     MakeField(model, "Event_fillNumber",         "IIFILL: LEP fill number",         Event_fillNumber_);
     MakeField(model, "Event_bFieldTesla",        "BPILOT output: solenoid B (Tesla)", Event_bFieldTesla_);
     MakeField(model, "Event_bFieldGevCm",        "BPILOT output: 1/R [1/cm] = BGEVCM / pT [GeV]", Event_bFieldGevCm_);
+    MakeField(model, "Event_isMC",               "1 if the simulation structure (PSCLUJ) is populated for this event, 0 for real data", Event_isMC_);
 }
 
 void RawNanoAODWriter::fillEvent()
@@ -987,4 +1004,75 @@ void RawNanoAODWriter::fillVtx()
         lpv = ph::LQ(lpv);
     }
     *nVtx_ = static_cast<std::int16_t>(Vtx_position_->size());
+}
+
+// -----------------------------------------------------------------------------
+// GEN-truth particle list -- SKELANA's PSHMC reads the simulation banks at
+// LQ(LDTOP-28)/(LDTOP-29) on shortDST (PSHLUJ) or the fullDST equivalents
+// (PSFLUJ) and populates the PSCLUJ common block with a LUJETS-style record.
+//
+// We call PSHMC from user02 and then copy the populated fields out. On real
+// data PSCLUJ stays at its previous state, so we manually zero NP first and
+// rely on NP == 0 after PSHMC to mean "not MC".
+//
+// Fields mirror the ones the SKELANA-based NanoAODWriter writes in its
+// GenPart_* collection, so downstream analysis code can be schema-agnostic
+// across the two writers.
+// -----------------------------------------------------------------------------
+void RawNanoAODWriter::defineGenPart(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nGenPart",               "Number of LUJETS generator particles (0 on real data)", nGenPart_);
+    MakeField(model, "GenPart_status",         "KP(i,1): JETSET status code (1 = final-state stable)",  GenPart_status_);
+    MakeField(model, "GenPart_pdgId",          "KP(i,2): PDG particle code",                            GenPart_pdgId_);
+    MakeField(model, "GenPart_parentIdx",      "KP(i,3) - 1: parent index (-1 if none)",                GenPart_parentIdx_);
+    MakeField(model, "GenPart_firstChildIdx",  "KP(i,4) - 1: first-daughter index",                     GenPart_firstChildIdx_);
+    MakeField(model, "GenPart_lastChildIdx",   "KP(i,5) - 1: last-daughter index",                      GenPart_lastChildIdx_);
+    MakeField(model, "GenPart_fourMomentum",   "PP(i,1..4): (px, py, pz, E) in GeV",                    GenPart_fourMomentum_);
+    MakeField(model, "GenPart_mass",           "PP(i,5): generator mass in GeV",                        GenPart_mass_);
+    MakeField(model, "GenPart_vertex",
+        "VP(i,1..3): production vertex (mm). Units differ from the reco Vtx_position "
+        "(cm) and TracRaw impact params (cm) -- LUJETS uses mm by convention.",
+        GenPart_vertex_);
+    MakeField(model, "GenPart_productionTime", "VP(i,4): time of production",       GenPart_productionTime_);
+    MakeField(model, "GenPart_properLifetime", "VP(i,5): proper lifetime",          GenPart_properLifetime_);
+}
+
+void RawNanoAODWriter::fillGenPart()
+{
+    GenPart_status_->clear();
+    GenPart_pdgId_->clear();
+    GenPart_parentIdx_->clear();
+    GenPart_firstChildIdx_->clear();
+    GenPart_lastChildIdx_->clear();
+    GenPart_fourMomentum_->clear();
+    GenPart_mass_->clear();
+    GenPart_vertex_->clear();
+    GenPart_productionTime_->clear();
+    GenPart_properLifetime_->clear();
+
+    // PSHMC/PSHLUJ/PSFLUJ return early on real data without touching NP, so
+    // we zero it manually and re-check afterwards -- NP > 0 after the call
+    // means the simulation structure was present and fully unpacked.
+    sk::NP = 0;
+    pshmc_();
+
+    const int np = sk::NP;
+    *nGenPart_ = np;
+    *Event_isMC_ = (np > 0) ? 1 : 0;
+
+    for (int i = 1; i <= np; ++i)
+    {
+        GenPart_status_->push_back(static_cast<std::int16_t>(sk::KP(i, 1)));
+        GenPart_pdgId_->push_back(sk::KP(i, 2));
+        GenPart_parentIdx_->push_back(sk::KP(i, 3) - 1);
+        GenPart_firstChildIdx_->push_back(sk::KP(i, 4) - 1);
+        GenPart_lastChildIdx_->push_back(sk::KP(i, 5) - 1);
+        GenPart_fourMomentum_->push_back(
+            XYZTVectorF(sk::PP(i, 1), sk::PP(i, 2), sk::PP(i, 3), sk::PP(i, 4)));
+        GenPart_mass_->push_back(sk::PP(i, 5));
+        GenPart_vertex_->push_back(
+            XYZVectorF(sk::VP(i, 1), sk::VP(i, 2), sk::VP(i, 3)));
+        GenPart_productionTime_->push_back(sk::VP(i, 4));
+        GenPart_properLifetime_->push_back(sk::VP(i, 5));
+    }
 }
