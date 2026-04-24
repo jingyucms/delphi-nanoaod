@@ -13,6 +13,20 @@ namespace phdst
     extern "C" void timed_(float *);
     extern "C" void timex_(float *);
 
+    // LPHPA: Fortran "integer function lphpa(iddp, lin, nump)".
+    // Returns the ZEBRA L-address of the sub-bank named iddp under parent bank
+    // lin, occurrence number nump (0 = standard for named blocklets). See
+    // /cvmfs/delphi.cern.ch/.../src/car/phdstxx.car line 16888 for the full
+    // catalogue of accepted names (MAIN / EMNC / HCNC / MUID / ELID / HAID /
+    // TRAC / TEOD / TEFA / TEFB / "EMCA.SHOWER" / "EMCA.SHOWER.LAYER", ...).
+    extern "C" int lphpa_(const char *iddp, int *lin, int *nump, size_t iddp_len);
+
+    // BPILOT: Fortran "subroutine bpilot(btesla, bgevcm)" — fills the
+    // current event's solenoid B field (Tesla) and the derived
+    // curvature-to-momentum constant (GeV/cm). Called once per DST
+    // record; SKELANA does this from its main steering routine.
+    extern "C" void bpilot_(float *btesla, float *bgevcm);
+
     inline void PHDST(const std::string &name, int &&n, int &m)
     {
         char c_name[name.size()];
@@ -60,6 +74,27 @@ namespace phdst
     inline void TIMEX(float &time)
     {
         timex_(&time);
+    }
+
+    // C++ wrapper for LPHPA. The Fortran side expects a CHARACTER variable
+    // padded to its declared length; the DELPHI convention is 4 characters,
+    // but some compound names (e.g. "EMCA.SHOWER") are longer. We pass the
+    // raw string and let the caller size it; Fortran LPHPA trims on its end.
+    inline int LPHPA(const std::string &name, int lparent, int nump = 0)
+    {
+        int lin  = lparent;
+        int np   = nump;
+        return lphpa_(name.c_str(), &lin, &np, name.size());
+    }
+
+    // Convenience wrapper: returns (BTESLA, BGEVCM) for the current DST
+    // record. Safe to call anywhere after the PHDST loop has loaded the
+    // first DST; earlier calls return zeros.
+    inline std::pair<float, float> BPILOT()
+    {
+        float btesla = 0.f, bgevcm = 0.f;
+        bpilot_(&btesla, &bgevcm);
+        return {btesla, bgevcm};
     }
 }
 
