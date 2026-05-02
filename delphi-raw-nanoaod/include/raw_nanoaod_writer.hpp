@@ -93,6 +93,18 @@ private:
     std::shared_ptr<float> Event_bFieldTesla_;   // BTESLA from BPILOT
     std::shared_ptr<float> Event_bFieldGevCm_;   // BGEVCM from BPILOT — use as 1/R [1/cm] = BGEVCM / pT [GeV]
 
+    // Simulation truth primary vertex: read from the first entry of the
+    // simulated-PV bank at LQ(LDTOP-28) (shortDST sim) or LQ(LDTOP-18)
+    // (older fullDST sim). The bank stores DELSIM's smeared event
+    // interaction point; in the absence of a usable Event_beamSpot
+    // reference, this is the only legitimate truth-PV anchor for MC
+    // events. errorFlag = 0 if the bank was found and unpacked, -1
+    // otherwise (real data, missing sim banks, etc.).
+    std::shared_ptr<float>        Event_simPVX_;
+    std::shared_ptr<float>        Event_simPVY_;
+    std::shared_ptr<float>        Event_simPVZ_;
+    std::shared_ptr<std::int8_t>  Event_simPVErrorFlag_;
+
     // EM-shower collections (M2).
     //
     // Sourced from the EMNC extra-module under every PA (per-track) bank in

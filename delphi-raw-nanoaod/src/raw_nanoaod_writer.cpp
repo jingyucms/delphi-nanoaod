@@ -155,6 +155,10 @@ void RawNanoAODWriter::defineEvent(std::unique_ptr<RNTupleModel> &model)
     MakeField(model, "Event_bFieldTesla",        "BPILOT output: solenoid B (Tesla)", Event_bFieldTesla_);
     MakeField(model, "Event_bFieldGevCm",        "BPILOT output: 1/R [1/cm] = BGEVCM / pT [GeV]", Event_bFieldGevCm_);
     MakeField(model, "Event_isMC",               "1 if the simulation structure (PSCLUJ) is populated for this event, 0 for real data", Event_isMC_);
+    MakeField(model, "Event_simPVX",             "MC simulation truth interaction point x (cm), from the first entry of the simulated-PV bank at LQ(LDTOP-28); 0 if errorFlag != 0", Event_simPVX_);
+    MakeField(model, "Event_simPVY",             "MC simulation truth interaction point y (cm)", Event_simPVY_);
+    MakeField(model, "Event_simPVZ",             "MC simulation truth interaction point z (cm)", Event_simPVZ_);
+    MakeField(model, "Event_simPVErrorFlag",     "0 if a sim-PV bank was found and unpacked, -1 otherwise (real data, missing banks, fullDST without LDTOP-28)", Event_simPVErrorFlag_);
 }
 
 void RawNanoAODWriter::fillEvent()
@@ -169,6 +173,63 @@ void RawNanoAODWriter::fillEvent()
     auto bfield = ph::BPILOT();
     *Event_bFieldTesla_ = bfield.first;
     *Event_bFieldGevCm_ = bfield.second;
+
+    // Sim-truth primary vertex: read first entry of the simulated-PV bank
+    // (shortDST sim at LDTOP-28; fullDST sim at LDTOP-18 in older versions).
+    // Per SKELANA PSHLUJ (skelana.car L5219+): NPVS = IQ(LPVS+1) is the
+    // number of sim primary vertices in the chain; each occupies 6 words
+    // starting at LPVS + 1 + NPVS, with x/y/z at offsets +4 / +5 / +6 from
+    // the entry. The first entry is the actual interaction point.
+    *Event_simPVX_ = 0.f;
+    *Event_simPVY_ = 0.f;
+    *Event_simPVZ_ = 0.f;
+    *Event_simPVErrorFlag_ = -1;
+    if (ph::LDTOP > 0)
+    {
+        // shortDST sim layout: LPVS at LDTOP-28, with NPVS entries each
+        // 6 words (x at +4, y at +5, z at +6 from the per-vertex offset).
+        int lpvs = ph::LQ(ph::LDTOP - 28);
+        if (lpvs > 0)
+        {
+            const int npvs = ph::IQ(lpvs + 1);
+            if (npvs >= 1)
+            {
+                const int ip = lpvs + 1 + npvs;
+                *Event_simPVX_ = ph::Q(ip + 4);
+                *Event_simPVY_ = ph::Q(ip + 5);
+                *Event_simPVZ_ = ph::Q(ip + 6);
+                *Event_simPVErrorFlag_ = 0;
+            }
+        }
+        else
+        {
+            // fullDST sim layout: walk LSH chain at LDTOP-3, follow the
+            // first valid SH's LST link to its LPV via LSH-4 / LST+1.
+            // LPV stores x/y/z at +5/+6/+7. Per SKELANA PSFLUJ
+            // (skelana.car L7088).
+            int lsh = ph::LQ(ph::LDTOP - 3);
+            while (lsh > 0)
+            {
+                if (std::lround(ph::Q(lsh + 1)) != 0)
+                {
+                    int lst = ph::LQ(lsh - 4);
+                    if (lst > 0)
+                    {
+                        int lpv = ph::LQ(lst + 1);
+                        if (lpv > 0)
+                        {
+                            *Event_simPVX_ = ph::Q(lpv + 5);
+                            *Event_simPVY_ = ph::Q(lpv + 6);
+                            *Event_simPVZ_ = ph::Q(lpv + 7);
+                            *Event_simPVErrorFlag_ = 0;
+                            break;
+                        }
+                    }
+                }
+                lsh = ph::LQ(lsh);
+            }
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------
