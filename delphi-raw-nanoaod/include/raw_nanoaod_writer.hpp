@@ -225,6 +225,15 @@ private:
     std::shared_ptr<std::vector<float>>                   TrackElement_theta_;
     std::shared_ptr<std::vector<float>>                   TrackElement_phi_;
     std::shared_ptr<std::vector<float>>                   TrackElement_invPOrPt_;
+    // Raw covariance tail words (variable length). The block size N is
+    // popcount(dataDescriptor & measurement-bits); the first N*(N+1)/2
+    // words are the lower-triangular error matrix of the measured
+    // sub-set of (X/R, Y/RPhi, Z, theta, phi, 1/P). We pass through up
+    // to 21 words (matches a 6-coord fit at most). Anything beyond is
+    // the PXDST-251+ footer (nDoF, chi2, length); also passed through
+    // when present.
+    std::shared_ptr<std::vector<std::array<float, 21>>>   TrackElement_covTail_;
+    std::shared_ptr<std::vector<std::int8_t>>             TrackElement_covTailLength_;
 
     // --- VD hits (M7): the MVDH event-level bank at LQ(LDTOP - 21).
     // Per SKELANA PSHVDH (skelana.car L4379) and PSCVDA / PSCVDU

@@ -698,9 +698,11 @@ void RawNanoAODWriter::fillTrac()
 // Track elements — M7 payload for track refitting. Same layout across
 // PA.TETP(13, TPC), PA.TEID(12, ID), PA.TEOD(14, OD), PA.TEFA(15, FCA),
 // PA.TEFB(16, FCB). Each PA track has at most one TE per sub-detector.
-// See shortdst.des block PA.TETP(13) for the word layout; we save the
-// eight common header words and leave the variable-length error matrix
-// and PXDST-251+ footer (nDoF, chi2, length) as a TODO.
+// See shortdst.des block PA.TETP(13) for the word layout. We save the
+// eight common header words plus a 21-float covariance tail that holds
+// the lower-triangular error matrix of the measured sub-set followed by
+// the PXDST-251+ footer (nDoF, chi2, length). The valid prefix length
+// is in TrackElement_covTailLength.
 // -----------------------------------------------------------------------------
 void RawNanoAODWriter::defineTrackElement(std::unique_ptr<RNTupleModel> &model)
 {
@@ -714,6 +716,20 @@ void RawNanoAODWriter::defineTrackElement(std::unique_ptr<RNTupleModel> &model)
     MakeField(model, "TrackElement_theta",            "Q(LTE+6): theta at reference point",                     TrackElement_theta_);
     MakeField(model, "TrackElement_phi",              "Q(LTE+7): phi at reference point",                       TrackElement_phi_);
     MakeField(model, "TrackElement_invPOrPt",         "Q(LTE+8): 1/P or 1/Pt at reference point",               TrackElement_invPOrPt_);
+    MakeField(model, "TrackElement_covTail",
+        "Raw 21 floats from Q(LTE+9..LTE+29): the covariance matrix tail "
+        "of the track-element bank. The first N*(N+1)/2 words are the "
+        "lower-triangular error matrix of the measured sub-set of "
+        "(coord1, coord2, coord3, theta, phi, 1/P), where "
+        "N = popcount(dataDescriptor & measurement-bits). Words past "
+        "N*(N+1)/2 are PXDST-251+ footer (nDoF, chi2, length). Decode "
+        "per shortdst.des. Use these to do a hit-aware vertex fit "
+        "(per-detector 3D point with proper covariance, not just perigee).",
+        TrackElement_covTail_);
+    MakeField(model, "TrackElement_covTailLength",
+        "Number of valid words in TrackElement_covTail (= N*(N+1)/2 for "
+        "the covariance, plus 0-3 footer words; rest are zero).",
+        TrackElement_covTailLength_);
 }
 
 namespace {
@@ -738,6 +754,8 @@ void RawNanoAODWriter::fillTrackElement()
     TrackElement_theta_->clear();
     TrackElement_phi_->clear();
     TrackElement_invPOrPt_->clear();
+    TrackElement_covTail_->clear();
+    TrackElement_covTailLength_->clear();
 
     if (ph::LDTOP <= 0 || TracRaw_paIdx_->empty()) { *nTrackElement_ = 0; return; }
 
@@ -762,16 +780,38 @@ void RawNanoAODWriter::fillTrackElement()
                 int lte = ph::LPHPA(probe.name, lpa, 0);
                 if (lte == 0) continue;
 
+                const std::int32_t dd = static_cast<std::int32_t>(
+                    std::lround(ph::Q(lte + 2)));
+
                 TrackElement_tracRawIdx_->push_back(thisTracRawIdx);
                 TrackElement_subDetector_->push_back(probe.code);
-                TrackElement_dataDescriptor_->push_back(
-                    static_cast<std::int32_t>(std::lround(ph::Q(lte + 2))));
+                TrackElement_dataDescriptor_->push_back(dd);
                 TrackElement_coord1_->push_back(ph::Q(lte + 3));
                 TrackElement_coord2_->push_back(ph::Q(lte + 4));
                 TrackElement_coord3_->push_back(ph::Q(lte + 5));
                 TrackElement_theta_->push_back(ph::Q(lte + 6));
                 TrackElement_phi_->push_back(ph::Q(lte + 7));
                 TrackElement_invPOrPt_->push_back(ph::Q(lte + 8));
+
+                // Per shortdst.des PA.TE{TP,ID,OD,FA,FB}: after the eight
+                // header words come n*(n+1)/2 lower-triangular error-matrix
+                // words, where n is the popcount of bits 6..12 (1-based) of
+                // the data descriptor (the "measurement code": t1, t2, theta,
+                // phi, 1/P, 1/Pt, E). For PXDST >= 251 a 3-word footer (nDoF,
+                // chi2, length) follows.
+                const int meas_bits = (dd >> 5) & 0x7F;
+                const int n = __builtin_popcount(meas_bits);
+                const int n_cov = n * (n + 1) / 2;
+                constexpr int kFooter = 3;
+                constexpr int kMaxTail = 21;
+                const int n_total = std::min(n_cov + kFooter, kMaxTail);
+
+                std::array<float, kMaxTail> tail{};
+                for (int k = 0; k < n_total; ++k)
+                    tail[k] = ph::Q(lte + 9 + k);
+                TrackElement_covTail_->push_back(tail);
+                TrackElement_covTailLength_->push_back(
+                    static_cast<std::int8_t>(n_total));
             }
         }
     }
