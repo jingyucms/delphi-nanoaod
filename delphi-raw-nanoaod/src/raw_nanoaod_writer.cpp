@@ -70,6 +70,7 @@ void RawNanoAODWriter::user00()
     defineHadShower(model);
     defineStic(model);
     defineMuidEl(model);
+    defineHaidRich(model);
     defineTrac(model);
     defineTrackElement(model);
     defineVdHit(model);
@@ -99,6 +100,7 @@ void RawNanoAODWriter::user02()
     fillHadShowers();
     fillStic();
     fillMuidEl();
+    fillHaidRich();
     fillTrac();
     fillTrackElement();
     fillVdHit();
@@ -560,6 +562,185 @@ void RawNanoAODWriter::fillMuidEl()
     }
     *nMuidRaw_ = static_cast<std::int16_t>(MuidRaw_paIdx_->size());
     *nElidRaw_ = static_cast<std::int16_t>(ElidRaw_paIdx_->size());
+}
+
+// -----------------------------------------------------------------------------
+// PA.HAID hadron-ID + RICH measurements (per-track).
+//
+// Direct PHDST-level decode of the variable-length HAID bank, mirroring
+// SKELANA's PSHHAD (skelana.car L3819+) without going through SKELANA's
+// run-loop machinery. The bank header word LHDAT (at LHAID+2) packs 7
+// segment-length counters in decimal digits:
+//
+//   IDATI = LHDAT mod 10           # ionization (dE/dx) bytes
+//   IDATG = (LHDAT/10)    mod 10   # RICH gas    radiator
+//   IDATL = (LHDAT/100)   mod 10   # RICH liquid radiator
+//   IDATV = (LHDAT/1000)  mod 10   # VD dE/dx
+//   IDATR = (LHDAT/10000) mod 10   # ringscan
+//   IDATQ = (LHDAT/100000) mod 10  # RICH quality status
+//   IDATT = LHDAT/1000000          # TPC dE/dx
+//
+// Sections appear in this order in the bank, each consuming idat += idatX
+// words past the previous section. The dE/dx ionization section also has a
+// bit-packed tag word (IHAD1 / IHAD2) that yields the kaonRich /
+// protonRich / pionRich / kaon/protonDedx / kaon/protonCombined values.
+//
+// We deliberately skip the IDATR ringscan and the SKELANA-derived KHAIDN /
+// KHAIDR / KHAIDE / KHAIDC arrays — those require XNEWTAG / XNEWPRO /
+// RPRODO / RPRODE / RPROCO calls which pull in non-trivial SKELANA state
+// (PSCDEX, PSCRLC) that PHDST mode doesn't initialize.
+// -----------------------------------------------------------------------------
+namespace {
+// JBYT(I, n, l): extract l bits from word I starting at bit n (1-indexed).
+// Equivalent of the MATHLIB Fortran intrinsic; pure right-shift + mask.
+inline int JBYT(std::int32_t I, int n, int l) {
+    return (static_cast<unsigned>(I) >> (n - 1)) & ((1u << l) - 1u);
+}
+} // anonymous namespace
+
+void RawNanoAODWriter::defineHaidRich(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nHaidRaw",                  "Number of tracks with PA.HAID (RICH + dE/dx hadron ID)", nHaidRaw_);
+    MakeField(model, "HaidRaw_paIdx",             "PA-track index",                                          HaidRaw_paIdx_);
+    MakeField(model, "HaidRaw_kaonDedx",          "KHAID(2): kaon signature with dE/dx (-1=no info)",        HaidRaw_kaonDedx_);
+    MakeField(model, "HaidRaw_protonDedx",        "KHAID(3): proton signature with dE/dx",                   HaidRaw_protonDedx_);
+    MakeField(model, "HaidRaw_kaonRich",          "KHAID(4): kaon signature with RICH",                      HaidRaw_kaonRich_);
+    MakeField(model, "HaidRaw_protonRich",        "KHAID(5): proton signature with RICH",                    HaidRaw_protonRich_);
+    MakeField(model, "HaidRaw_pionRich",          "KHAID(6): pion signature with RICH",                      HaidRaw_pionRich_);
+    MakeField(model, "HaidRaw_kaonCombined",      "QHAID(7): combined kaon tag (-1..1)",                     HaidRaw_kaonCombined_);
+    MakeField(model, "HaidRaw_protonCombined",    "QHAID(8): combined proton tag",                           HaidRaw_protonCombined_);
+    MakeField(model, "HaidRaw_richQuality",       "KHAID(9): RICH quality status word",                      HaidRaw_richQuality_);
+    MakeField(model, "HaidRaw_thetaGas",          "QGRIC(1): RICH gas Cherenkov angle (rad)",                HaidRaw_thetaGas_);
+    MakeField(model, "HaidRaw_sigmaGas",          "QGRIC(2): RICH gas angle resolution",                     HaidRaw_sigmaGas_);
+    MakeField(model, "HaidRaw_nphGas",            "KGRIC(3): RICH gas observed photons in ring",             HaidRaw_nphGas_);
+    MakeField(model, "HaidRaw_nepGas",            "QGRIC(4): RICH gas expected photons (ISVER>102 form)",    HaidRaw_nepGas_);
+    MakeField(model, "HaidRaw_flagGas",           "KGRIC(5): RICH gas sector flag",                          HaidRaw_flagGas_);
+    MakeField(model, "HaidRaw_thetaLiq",          "QLRIC(1): RICH liquid Cherenkov angle (rad)",             HaidRaw_thetaLiq_);
+    MakeField(model, "HaidRaw_sigmaLiq",          "QLRIC(2): RICH liquid angle resolution",                  HaidRaw_sigmaLiq_);
+    MakeField(model, "HaidRaw_nphLiq",            "KLRIC(3): RICH liquid observed photons",                  HaidRaw_nphLiq_);
+    MakeField(model, "HaidRaw_nepLiq",            "QLRIC(4): RICH liquid expected photons",                  HaidRaw_nepLiq_);
+    MakeField(model, "HaidRaw_flagLiq",           "KLRIC(5): RICH liquid sector flag",                       HaidRaw_flagLiq_);
+}
+
+void RawNanoAODWriter::fillHaidRich()
+{
+    HaidRaw_paIdx_->clear();
+    HaidRaw_kaonDedx_->clear();      HaidRaw_protonDedx_->clear();
+    HaidRaw_kaonRich_->clear();      HaidRaw_protonRich_->clear();
+    HaidRaw_pionRich_->clear();
+    HaidRaw_kaonCombined_->clear();  HaidRaw_protonCombined_->clear();
+    HaidRaw_richQuality_->clear();
+    HaidRaw_thetaGas_->clear();      HaidRaw_sigmaGas_->clear();
+    HaidRaw_nphGas_->clear();        HaidRaw_nepGas_->clear();
+    HaidRaw_flagGas_->clear();
+    HaidRaw_thetaLiq_->clear();      HaidRaw_sigmaLiq_->clear();
+    HaidRaw_nphLiq_->clear();        HaidRaw_nepLiq_->clear();
+    HaidRaw_flagLiq_->clear();
+
+    if (ph::LDTOP <= 0) { *nHaidRaw_ = 0; return; }
+
+    int paIdx = 0;
+    for (int lpv = ph::LQ(ph::LDTOP - 1); lpv > 0; lpv = ph::LQ(lpv))
+    {
+        for (int lpa = ph::LQ(lpv - 1); lpa > 0; lpa = ph::LQ(lpa), ++paIdx)
+        {
+            int lhaid = ph::LPHPA("HAID", lpa, 0);
+            if (lhaid <= 0) continue;
+
+            // Decode segment counters from LHDAT.
+            int lhdat = static_cast<int>(std::lround(ph::Q(lhaid + 2)));
+            int idatI = lhdat % 10;
+            int idatG = (lhdat / 10) % 10;
+            int idatL = (lhdat / 100) % 10;
+            int idatV = (lhdat / 1000) % 10;
+            int idatR = (lhdat / 10000) % 10;
+            int idatQ = (lhdat / 100000) % 10;
+            // int idatT = lhdat / 1000000;  // TPC dE/dx; unused
+
+            int idat = 2;
+            if (idatI >= 4) idat += 4;
+
+            HaidRaw_paIdx_->push_back(static_cast<std::int16_t>(paIdx));
+
+            // Defaults match SKELANA's "no info" sentinel (-1).
+            std::int8_t kDedx=-1, pDedx=-1, kRich=-1, pRich=-1, piRich=-1;
+            float kCombined = -1.f, pCombined = -1.f;
+            std::int8_t richQuality = -1;
+
+            if (idatI == 2 || idatI == 6) {
+                int ihad1 = static_cast<int>(std::lround(ph::Q(lhaid + idat + 1)));
+                int ihad2 = static_cast<int>(std::lround(ph::Q(lhaid + idat + 2) * 10.0));
+                kDedx  = static_cast<std::int8_t>(JBYT(ihad1, 1, 3) - 1);
+                pDedx  = static_cast<std::int8_t>(JBYT(ihad1, 4, 3) - 1);
+                // RICH kaon/proton bits live in IQ(LPA+3) per PSHHAD line 3935.
+                std::int32_t lpaWord3 = ph::IQ(lpa + 3);
+                kRich  = static_cast<std::int8_t>(JBYT(lpaWord3, 13, 3) - 1);
+                pRich  = static_cast<std::int8_t>(JBYT(lpaWord3, 16, 3) - 1);
+                piRich = static_cast<std::int8_t>(JBYT(ihad1, 11, 3) - 1);
+                kCombined = static_cast<float>((ihad2 % 100) - 10) / 10.f;
+                pCombined = static_cast<float>((ihad2 / 100) - 10) / 10.f;
+                idat += 2;
+            }
+
+            HaidRaw_kaonDedx_->push_back(kDedx);
+            HaidRaw_protonDedx_->push_back(pDedx);
+            HaidRaw_kaonRich_->push_back(kRich);
+            HaidRaw_protonRich_->push_back(pRich);
+            HaidRaw_pionRich_->push_back(piRich);
+            HaidRaw_kaonCombined_->push_back(kCombined);
+            HaidRaw_protonCombined_->push_back(pCombined);
+
+            // RICH gas section.
+            float thetaG = 0.f, sigmaG = 0.f, nepG = 0.f;
+            std::int16_t nphG = 0;
+            std::int8_t flagG = 0;
+            if (idatG > 0) {
+                thetaG = ph::Q(lhaid + idat + 1);
+                sigmaG = ph::Q(lhaid + idat + 2);
+                int word3 = static_cast<int>(std::lround(ph::Q(lhaid + idat + 3)));
+                nphG = static_cast<std::int16_t>(word3 % 500);
+                // ISVER >= 103 form (the only one recent processings use):
+                //   nep = floor(Q(IDAT+3) / 500.0) / 10.0
+                nepG = std::trunc(ph::Q(lhaid + idat + 3) / 500.f) / 10.f;
+                flagG = static_cast<std::int8_t>(std::lround(ph::Q(lhaid + idat + 4)));
+                idat += idatG;
+            }
+            HaidRaw_thetaGas_->push_back(thetaG);
+            HaidRaw_sigmaGas_->push_back(sigmaG);
+            HaidRaw_nphGas_->push_back(nphG);
+            HaidRaw_nepGas_->push_back(nepG);
+            HaidRaw_flagGas_->push_back(flagG);
+
+            // RICH liquid section.
+            float thetaL = 0.f, sigmaL = 0.f, nepL = 0.f;
+            std::int16_t nphL = 0;
+            std::int8_t flagL = 0;
+            if (idatL > 0) {
+                thetaL = ph::Q(lhaid + idat + 1);
+                sigmaL = ph::Q(lhaid + idat + 2);
+                int word3 = static_cast<int>(std::lround(ph::Q(lhaid + idat + 3)));
+                nphL = static_cast<std::int16_t>(word3 % 500);
+                nepL = std::trunc(ph::Q(lhaid + idat + 3) / 500.f) / 10.f;
+                flagL = static_cast<std::int8_t>(std::lround(ph::Q(lhaid + idat + 4)));
+                idat += idatL;
+            }
+            HaidRaw_thetaLiq_->push_back(thetaL);
+            HaidRaw_sigmaLiq_->push_back(sigmaL);
+            HaidRaw_nphLiq_->push_back(nphL);
+            HaidRaw_nepLiq_->push_back(nepL);
+            HaidRaw_flagLiq_->push_back(flagL);
+
+            if (idatV > 0) idat += idatV;  // VD dE/dx, skipped
+            if (idatR > 0) idat += idatR;  // ringscan, skipped
+            if (idatQ > 0) {
+                richQuality = static_cast<std::int8_t>(
+                    std::lround(ph::Q(lhaid + idat + 1)));
+                idat += idatQ;
+            }
+            HaidRaw_richQuality_->push_back(richQuality);
+        }
+    }
+    *nHaidRaw_ = static_cast<std::int16_t>(HaidRaw_paIdx_->size());
 }
 
 // -----------------------------------------------------------------------------
