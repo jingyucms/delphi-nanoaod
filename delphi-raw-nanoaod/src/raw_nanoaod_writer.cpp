@@ -6,6 +6,10 @@
 #include <unordered_map>
 
 #include "skelana/pscluj.hpp"
+#include "skelana/pscvec.hpp"
+#include "skelana/pschad.hpp"
+#include "skelana/pscgrc.hpp"
+#include "skelana/psclrc.hpp"
 
 namespace sk = skelana;
 
@@ -22,6 +26,24 @@ namespace sk = skelana;
 // LUJETS truth we want without dragging in the sim-track machinery.
 extern "C" void pshluj_();
 extern "C" void psfluj_();
+
+// PSINI: SKELANA's once-per-job init. Sets default IFLxxx flags,
+// initialises the VD subsystem (VDIDST), registers PA-extra-modules
+// in PHDST's IPHREQ tables. Without it, LPHPA('HAID',...),
+// LPHPA('MUID',...), LPHPA('ELID',...) and other PA-extra-module
+// lookups silently return 0 even when the bank is present in the
+// fadana — LPHPA lacks the registry mapping module name -> bank ID.
+// Verified empirically: under raw-nanoaod (no PSINI), the OLD
+// skelana-based writer extracts 1822 nonzero RICH tags from the same
+// fadana that our PHDST walk reports as bank-empty.
+extern "C" void psini_();
+// PSBEG: SKELANA's per-event "begin" hook. Drives the SKELANA processing
+// pipeline: PSCRUN/PSCEVT walk the PA chain and dispatch PSHHAD/PSHMUD/etc.
+// per track, populating the SKELANA commons. Side effect that we need: it
+// also makes the PA-extra-module bank pointers reachable to LPHPA. Without
+// it, LPHPA('HAID', lpa, 0) returns 0 even when the bank is in the file
+// (verified empirically against the OLD skelana-based writer's output).
+extern "C" void psbeg_();
 
 // -----------------------------------------------------------------------------
 // Field-registration helpers, copied from delphi-nanoaod/src/nanoaod_writer.cpp.
@@ -64,6 +86,12 @@ void RawNanoAODWriter::user00()
 {
     super::user00();
 
+    // SKELANA once-per-job init. Required for LPHPA('HAID',...) etc. to
+    // succeed on PA-extra-module lookups (registers the module-name <->
+    // bank-ID table that LPHPA walks internally). Side effect: also sets
+    // IFLxxx default flags and initialises VD via VDIDST. Cheap.
+    psini_();
+
     std::unique_ptr<RNTupleModel> model = RNTupleModel::Create();
     defineEvent(model);
     defineEmShower(model);
@@ -95,6 +123,12 @@ int RawNanoAODWriter::user01()
 void RawNanoAODWriter::user02()
 {
     super::user02();
+    // SKELANA per-event hook. Triggers PA-extra-module decode (PSHHAD,
+    // PSHMUD, PSHELD, ...) and makes LPHPA('HAID',...) etc. work. Without
+    // this our HAID / MUID / ELID extractors get 0 hits despite the bank
+    // being present (cross-checked vs the OLD skelana-based writer on the
+    // same fadana — it gets nonzero entries via PSHHAD/sk::KHAID).
+    psbeg_();
     fillEvent();
     fillEmShowers();
     fillHadShowers();
@@ -565,43 +599,30 @@ void RawNanoAODWriter::fillMuidEl()
 }
 
 // -----------------------------------------------------------------------------
-// PA.HAID hadron-ID + RICH measurements (per-track).
+// PA.HAID hadron-ID + RICH measurements (per-VECP-track).
 //
-// Direct PHDST-level decode of the variable-length HAID bank, mirroring
-// SKELANA's PSHHAD (skelana.car L3819+) without going through SKELANA's
-// run-loop machinery. The bank header word LHDAT (at LHAID+2) packs 7
-// segment-length counters in decimal digits:
+// Reads SKELANA commons populated by PSBEG (called from user02 above):
+//   pschad_.khaid[i][...]   per-track HAID tags (KHAID(field, i))
+//   pscgrc_.theg/sigg/...   per-track RICH gas radiator
+//   psclrc_.thel/sigl/...   per-track RICH liquid radiator
 //
-//   IDATI = LHDAT mod 10           # ionization (dE/dx) bytes
-//   IDATG = (LHDAT/10)    mod 10   # RICH gas    radiator
-//   IDATL = (LHDAT/100)   mod 10   # RICH liquid radiator
-//   IDATV = (LHDAT/1000)  mod 10   # VD dE/dx
-//   IDATR = (LHDAT/10000) mod 10   # ringscan
-//   IDATQ = (LHDAT/100000) mod 10  # RICH quality status
-//   IDATT = LHDAT/1000000          # TPC dE/dx
+// One row per VECP charged-track (i = LVPART .. NVECP). The OLD skelana-
+// based writer uses exactly this idiom (nanoaod_writer.cpp lines 1261+);
+// we mirror it here so PHDST and SKELANA writers produce identical
+// content from the same fadana.
 //
-// Sections appear in this order in the bank, each consuming idat += idatX
-// words past the previous section. The dE/dx ionization section also has a
-// bit-packed tag word (IHAD1 / IHAD2) that yields the kaonRich /
-// protonRich / pionRich / kaon/protonDedx / kaon/protonCombined values.
-//
-// We deliberately skip the IDATR ringscan and the SKELANA-derived KHAIDN /
-// KHAIDR / KHAIDE / KHAIDC arrays — those require XNEWTAG / XNEWPRO /
-// RPRODO / RPRODE / RPROCO calls which pull in non-trivial SKELANA state
-// (PSCDEX, PSCRLC) that PHDST mode doesn't initialize.
+// Earlier attempt: walk PA chain and call LPHPA('HAID', lpa, 0) directly
+// (mirroring PSHHAD bank-decode). LPHPA returned 0 even for tracks where
+// the bank was present and the OLD writer's PSHHAD found data. Empirical
+// conclusion: LPHPA on the PA-extra-module banks (HAID/MUID/ELID, IDs
+// 24-26) requires SKELANA's per-event setup (PSBEG); without it, the
+// extramodule registry isn't populated and bank lookups silently fail.
+// Reading from the SKELANA commons after PSBEG sidesteps this entirely.
 // -----------------------------------------------------------------------------
-namespace {
-// JBYT(I, n, l): extract l bits from word I starting at bit n (1-indexed).
-// Equivalent of the MATHLIB Fortran intrinsic; pure right-shift + mask.
-inline int JBYT(std::int32_t I, int n, int l) {
-    return (static_cast<unsigned>(I) >> (n - 1)) & ((1u << l) - 1u);
-}
-} // anonymous namespace
-
 void RawNanoAODWriter::defineHaidRich(std::unique_ptr<RNTupleModel> &model)
 {
-    MakeField(model, "nHaidRaw",                  "Number of tracks with PA.HAID (RICH + dE/dx hadron ID)", nHaidRaw_);
-    MakeField(model, "HaidRaw_paIdx",             "PA-track index",                                          HaidRaw_paIdx_);
+    MakeField(model, "nHaidRaw",                  "Number of VECP charged tracks with hadron-ID rows (one per VECP-i in [LVPART..NVECP])", nHaidRaw_);
+    MakeField(model, "HaidRaw_paIdx",             "VECP track index (1-based) — same ordering as Part_* in the OLD nanoaod writer", HaidRaw_paIdx_);
     MakeField(model, "HaidRaw_kaonDedx",          "KHAID(2): kaon signature with dE/dx (-1=no info)",        HaidRaw_kaonDedx_);
     MakeField(model, "HaidRaw_protonDedx",        "KHAID(3): proton signature with dE/dx",                   HaidRaw_protonDedx_);
     MakeField(model, "HaidRaw_kaonRich",          "KHAID(4): kaon signature with RICH",                      HaidRaw_kaonRich_);
@@ -637,108 +658,31 @@ void RawNanoAODWriter::fillHaidRich()
     HaidRaw_nphLiq_->clear();        HaidRaw_nepLiq_->clear();
     HaidRaw_flagLiq_->clear();
 
-    if (ph::LDTOP <= 0) { *nHaidRaw_ = 0; return; }
-
-    int paIdx = 0;
-    for (int lpv = ph::LQ(ph::LDTOP - 1); lpv > 0; lpv = ph::LQ(lpv))
+    // PSBEG (called in user02) populates these commons. Iterate over VECP
+    // and emit one row per charged-track (VECP-i in [LVPART..NVECP]). Same
+    // pattern as nanoaod_writer.cpp:1261+ in the OLD skelana-based writer.
+    for (int i = sk::LVPART; i <= sk::NVECP; ++i)
     {
-        for (int lpa = ph::LQ(lpv - 1); lpa > 0; lpa = ph::LQ(lpa), ++paIdx)
-        {
-            int lhaid = ph::LPHPA("HAID", lpa, 0);
-            if (lhaid <= 0) continue;
+        HaidRaw_paIdx_->push_back(static_cast<std::int16_t>(i));
+        HaidRaw_kaonDedx_->push_back(  static_cast<std::int8_t>(sk::KHAID(2, i)));
+        HaidRaw_protonDedx_->push_back(static_cast<std::int8_t>(sk::KHAID(3, i)));
+        HaidRaw_kaonRich_->push_back(  static_cast<std::int8_t>(sk::KHAID(4, i)));
+        HaidRaw_protonRich_->push_back(static_cast<std::int8_t>(sk::KHAID(5, i)));
+        HaidRaw_pionRich_->push_back(  static_cast<std::int8_t>(sk::KHAID(6, i)));
+        HaidRaw_kaonCombined_->push_back(  sk::QHAID(7, i));
+        HaidRaw_protonCombined_->push_back(sk::QHAID(8, i));
+        HaidRaw_richQuality_->push_back(static_cast<std::int8_t>(sk::KHAID(9, i)));
 
-            // Decode segment counters from LHDAT.
-            int lhdat = static_cast<int>(std::lround(ph::Q(lhaid + 2)));
-            int idatI = lhdat % 10;
-            int idatG = (lhdat / 10) % 10;
-            int idatL = (lhdat / 100) % 10;
-            int idatV = (lhdat / 1000) % 10;
-            int idatR = (lhdat / 10000) % 10;
-            int idatQ = (lhdat / 100000) % 10;
-            // int idatT = lhdat / 1000000;  // TPC dE/dx; unused
-
-            int idat = 2;
-            if (idatI >= 4) idat += 4;
-
-            HaidRaw_paIdx_->push_back(static_cast<std::int16_t>(paIdx));
-
-            // Defaults match SKELANA's "no info" sentinel (-1).
-            std::int8_t kDedx=-1, pDedx=-1, kRich=-1, pRich=-1, piRich=-1;
-            float kCombined = -1.f, pCombined = -1.f;
-            std::int8_t richQuality = -1;
-
-            if (idatI == 2 || idatI == 6) {
-                int ihad1 = static_cast<int>(std::lround(ph::Q(lhaid + idat + 1)));
-                int ihad2 = static_cast<int>(std::lround(ph::Q(lhaid + idat + 2) * 10.0));
-                kDedx  = static_cast<std::int8_t>(JBYT(ihad1, 1, 3) - 1);
-                pDedx  = static_cast<std::int8_t>(JBYT(ihad1, 4, 3) - 1);
-                // RICH kaon/proton bits live in IQ(LPA+3) per PSHHAD line 3935.
-                std::int32_t lpaWord3 = ph::IQ(lpa + 3);
-                kRich  = static_cast<std::int8_t>(JBYT(lpaWord3, 13, 3) - 1);
-                pRich  = static_cast<std::int8_t>(JBYT(lpaWord3, 16, 3) - 1);
-                piRich = static_cast<std::int8_t>(JBYT(ihad1, 11, 3) - 1);
-                kCombined = static_cast<float>((ihad2 % 100) - 10) / 10.f;
-                pCombined = static_cast<float>((ihad2 / 100) - 10) / 10.f;
-                idat += 2;
-            }
-
-            HaidRaw_kaonDedx_->push_back(kDedx);
-            HaidRaw_protonDedx_->push_back(pDedx);
-            HaidRaw_kaonRich_->push_back(kRich);
-            HaidRaw_protonRich_->push_back(pRich);
-            HaidRaw_pionRich_->push_back(piRich);
-            HaidRaw_kaonCombined_->push_back(kCombined);
-            HaidRaw_protonCombined_->push_back(pCombined);
-
-            // RICH gas section.
-            float thetaG = 0.f, sigmaG = 0.f, nepG = 0.f;
-            std::int16_t nphG = 0;
-            std::int8_t flagG = 0;
-            if (idatG > 0) {
-                thetaG = ph::Q(lhaid + idat + 1);
-                sigmaG = ph::Q(lhaid + idat + 2);
-                int word3 = static_cast<int>(std::lround(ph::Q(lhaid + idat + 3)));
-                nphG = static_cast<std::int16_t>(word3 % 500);
-                // ISVER >= 103 form (the only one recent processings use):
-                //   nep = floor(Q(IDAT+3) / 500.0) / 10.0
-                nepG = std::trunc(ph::Q(lhaid + idat + 3) / 500.f) / 10.f;
-                flagG = static_cast<std::int8_t>(std::lround(ph::Q(lhaid + idat + 4)));
-                idat += idatG;
-            }
-            HaidRaw_thetaGas_->push_back(thetaG);
-            HaidRaw_sigmaGas_->push_back(sigmaG);
-            HaidRaw_nphGas_->push_back(nphG);
-            HaidRaw_nepGas_->push_back(nepG);
-            HaidRaw_flagGas_->push_back(flagG);
-
-            // RICH liquid section.
-            float thetaL = 0.f, sigmaL = 0.f, nepL = 0.f;
-            std::int16_t nphL = 0;
-            std::int8_t flagL = 0;
-            if (idatL > 0) {
-                thetaL = ph::Q(lhaid + idat + 1);
-                sigmaL = ph::Q(lhaid + idat + 2);
-                int word3 = static_cast<int>(std::lround(ph::Q(lhaid + idat + 3)));
-                nphL = static_cast<std::int16_t>(word3 % 500);
-                nepL = std::trunc(ph::Q(lhaid + idat + 3) / 500.f) / 10.f;
-                flagL = static_cast<std::int8_t>(std::lround(ph::Q(lhaid + idat + 4)));
-                idat += idatL;
-            }
-            HaidRaw_thetaLiq_->push_back(thetaL);
-            HaidRaw_sigmaLiq_->push_back(sigmaL);
-            HaidRaw_nphLiq_->push_back(nphL);
-            HaidRaw_nepLiq_->push_back(nepL);
-            HaidRaw_flagLiq_->push_back(flagL);
-
-            if (idatV > 0) idat += idatV;  // VD dE/dx, skipped
-            if (idatR > 0) idat += idatR;  // ringscan, skipped
-            if (idatQ > 0) {
-                richQuality = static_cast<std::int8_t>(
-                    std::lround(ph::Q(lhaid + idat + 1)));
-                idat += idatQ;
-            }
-            HaidRaw_richQuality_->push_back(richQuality);
-        }
+        HaidRaw_thetaGas_->push_back(sk::THEG(i));
+        HaidRaw_sigmaGas_->push_back(sk::SIGG(i));
+        HaidRaw_nphGas_->push_back(  static_cast<std::int16_t>(sk::NPHG(i)));
+        HaidRaw_nepGas_->push_back(  sk::NEPG(i));
+        HaidRaw_flagGas_->push_back( static_cast<std::int8_t>(sk::FLAGG(i)));
+        HaidRaw_thetaLiq_->push_back(sk::THEL(i));
+        HaidRaw_sigmaLiq_->push_back(sk::SIGL(i));
+        HaidRaw_nphLiq_->push_back(  static_cast<std::int16_t>(sk::NPHL(i)));
+        HaidRaw_nepLiq_->push_back(  sk::NEPL(i));
+        HaidRaw_flagLiq_->push_back( static_cast<std::int8_t>(sk::FLAGL(i)));
     }
     *nHaidRaw_ = static_cast<std::int16_t>(HaidRaw_paIdx_->size());
 }
