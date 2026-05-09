@@ -41,6 +41,13 @@ from binning_and_selections import (
     apply_event_selection_delphi,
 )
 
+from thrust_moments import (
+    create_all_moment_histograms,
+    fill_moments_all_variants,
+    write_moment_histograms,
+    TAU_MAX_PHYS,
+)
+
 # ============================================================================
 # SYSTEMATIC CONFIGURATION
 # ============================================================================
@@ -453,210 +460,188 @@ def calculate_all_thrust_variants(px, py, pz, m, q, sel_c, sel_n, include_met=Tr
 # ============================================================================
 
 def process_gen_level(tree_gen_before, tree_gen, event_idx, gen_hists,
-                      charged_pt_min=0.4, neutral_e_min=0.5):
+                      charged_pt_min=0.4, neutral_e_min=0.5,
+                      moment_hists=None):
     """
-    Process generator-level particles (MC only).
-    No event selection applied at gen level.
-    
-    Parameters:
-    -----------
-    tree_gen_before : ROOT TTree
-        Primary gen tree (tgenBefore)
-    tree_gen : ROOT TTree
-        Fallback gen tree (tgen) 
-    event_idx : int
-        Event index
-    gen_hists : dict
-        Dictionary of gen-level histograms
-    counter : ROOT.TH1D
-        Counter histogram
-    
+    Process generator-level particles (MC only). No event selection at gen level.
+
+    When called with `gen_hists is not None` (the once-per-event "before" call),
+    this function ALSO fills the gen_full moment accumulators (nominal-only).
+    On per-systematic calls (gen_hists=None), only the gen-selected thrust
+    values for response matrices are computed and returned.
+
     Returns:
-    --------
-    dict with gen thrust values (for response matrix filling), or None if event invalid
+        dict with gen thrust values (for response matrix filling),
+        or None if invalid.
     """
     # Load from primary tree
     tree_gen_before.GetEntry(event_idx)
-    
+
     # Energy cut
     E = tree_gen_before.Energy
     if abs(E - 91.25) > 1:
         return None
-    
+
     # Load particles
     px = np.array(tree_gen_before.px)
     py = np.array(tree_gen_before.py)
     pz = np.array(tree_gen_before.pz)
-    m = np.array(tree_gen_before.mass)
-    q = np.array(tree_gen_before.charge)
+    m  = np.array(tree_gen_before.mass)
+    q  = np.array(tree_gen_before.charge)
     pt = np.array(tree_gen_before.pt)
     th = np.array(tree_gen_before.theta)
-    
+
     if len(px) == 0:
         return None
-    
-    # Check energy conservation
+
+    # Check energy conservation; fall back to tgen if needed
     e = np.sqrt(px**2 + py**2 + pz**2 + m**2)
-    
     if abs(np.sum(e) - E) > 0.1:
-        # Energy not conserved - switch to fallback tree for THIS event
         tree_gen.GetEntry(event_idx)
-        
-        # Reload ALL particle data from fallback tree
         px = np.array(tree_gen.px)
         py = np.array(tree_gen.py)
         pz = np.array(tree_gen.pz)
-        m = np.array(tree_gen.mass)
-        q = np.array(tree_gen.charge)
+        m  = np.array(tree_gen.mass)
+        q  = np.array(tree_gen.charge)
         pt = np.array(tree_gen.pt)
         th = np.array(tree_gen.theta)
-        
-        # Recalculate energy with new data
         e = np.sqrt(px**2 + py**2 + pz**2 + m**2)
-    
+
     if len(px) == 0:
         return None
-    
+
     # ========================================================================
-    # PURE GEN HISTOGRAMS: No selection applied
+    # PURE GEN HISTOGRAMS + GEN_FULL MOMENT FILLS
+    # No track selection, no event selection. Truth in full phase space.
+    # Both share `thrust_vals_no_sel` and the same gate so they only run on
+    # the once-per-event "before" call (gen_hists is not None).
     # ========================================================================
-    # Identify charged and neutral (no selection applied for gen)
     if gen_hists is not None:
         is_charged = np.abs(q) > 0.1
         sel_c_gen = is_charged
         sel_n_gen = ~is_charged
-        
-        # Calculate all thrust variants (no MET for gen level)
+
         thrust_vals_no_sel = calculate_all_thrust_variants(
             px, py, pz, m, q,
             sel_c_gen, sel_n_gen,
             include_met=False
         )
-        
+
         # Fill gen histograms (no event selection at gen level)
         gen_hists['Thrust_before2'].Fill(thrust_vals_no_sel['thrust'])
         gen_hists['Thrust_before_log2'].Fill(thrust_vals_no_sel['thrust_log'])
         gen_hists['Thrust_before2_Escheme'].Fill(thrust_vals_no_sel['thrust_escheme'])
         gen_hists['Thrust_before_log2_Escheme'].Fill(thrust_vals_no_sel['thrust_log_escheme'])
-        
+
         gen_hists['ThrustC_before2'].Fill(thrust_vals_no_sel['thrust_charged'])
         gen_hists['ThrustC_before_log2'].Fill(thrust_vals_no_sel['thrust_charged_log'])
         gen_hists['ThrustC_before2_Escheme'].Fill(thrust_vals_no_sel['thrust_charged_escheme'])
         gen_hists['ThrustC_before_log2_Escheme'].Fill(thrust_vals_no_sel['thrust_charged_log_escheme'])
-    
+
+        # --- gen_full moment accumulators (nominal only, once per event) ---
+        if moment_hists is not None:
+            fill_moments_all_variants(
+                moment_hists['gen_full']['nominal'],
+                scenario='gen_full',
+                syst_name='nominal',
+                thrust_vals=thrust_vals_no_sel,
+                weight=1.0,
+                tau_max=TAU_MAX_PHYS,
+            )
+
     # ========================================================================
-    # FOR RESPONSE MATRICES: Apply track selection
+    # FOR RESPONSE MATRICES: Apply gen track selection (per-syst cuts)
     # ========================================================================
-    # Apply track selection at gen level (no d0, z0 cuts for gen)
     gen_selection = apply_track_selection_delphi(
         px_gen=px, py_gen=py, pz_gen=pz, m_gen=m, q_gen=q,
         th_gen=th, pt_gen=pt,
-        charged_pt_min=charged_pt_min,  
-        neutral_e_min=neutral_e_min,    
+        charged_pt_min=charged_pt_min,
+        neutral_e_min=neutral_e_min,
     )
-    
+
     sel_gen_all = gen_selection['sel_gen']
-    
+
     if not np.any(sel_gen_all):
-        # No particles pass selection - return None for response matrices
         return None
 
-    
     # Extract selected gen particles
     px_sel = px[sel_gen_all]
     py_sel = py[sel_gen_all]
     pz_sel = pz[sel_gen_all]
-    m_sel = m[sel_gen_all]
-    q_sel = q[sel_gen_all]
-    
-    # Need to re-map the selection masks to the selected arrays
-    sel_c_final = np.abs(q_sel) > 0.1  
+    m_sel  = m[sel_gen_all]
+    q_sel  = q[sel_gen_all]
+
+    sel_c_final = np.abs(q_sel) > 0.1
     sel_n_final = ~sel_c_final
-    
+
     # Calculate thrust for selected gen particles (for response matrices)
     thrust_vals_selected = calculate_all_thrust_variants(
         px_sel, py_sel, pz_sel, m_sel, q_sel,
         sel_c_final, sel_n_final,
         include_met=False
     )
-    
+
     return thrust_vals_selected
 
 
-def process_reco_level(tree_reco, event_idx, systematics, reco_hists, response_matrices, 
-                       thrust_gen_dict=None, is_mc=False, counter=None, counter_weighted=None):
+def process_reco_level(tree_reco, event_idx, systematics, reco_hists,
+                       response_matrices,
+                       thrust_gen_dict=None, is_mc=False,
+                       counter=None, counter_weighted=None,
+                       moment_hists=None):
     """
     Process reco-level particles for all systematics.
-    Applies event selection separately for each thrust variant.
-    
-    Parameters:
-    -----------
-    tree_reco : ROOT TTree
-        Reco tree (t)
-    event_idx : int
-        Event index
-    systematics : dict
-        Dictionary of systematic configurations to process
-    reco_hists : dict
-        Dictionary of reco histograms (keyed by systematic name)
-    response_matrices : dict
-        Dictionary of response matrices (keyed by systematic name)
-    thrust_gen : dict, optional
-        Gen-level thrust values (for response matrix filling)
-    is_mc : bool
-        Whether this is MC (affects response matrix filling)
-    counter : ROOT.TH1D
-        Counter histogram
+ 
+    A SINGLE event selection is applied (P-scheme all-particle), and ALL
+    four thrust variants (P/E scheme, all/charged) plus all four response
+    matrices are gated on it. No per-variant recomputation.
     """
     # Load event
     tree_reco.GetEntry(event_idx)
-    
+ 
     # Energy cut
     E = tree_reco.Energy
     if abs(E - 91.25) > 1:
         return
-    
-    # Load reco particles (only essential variables)
+ 
+    # Load reco particles
     px = np.array(tree_reco.px)
     py = np.array(tree_reco.py)
     pz = np.array(tree_reco.pz)
-    m = np.array(tree_reco.mass)
-    q = np.array(tree_reco.charge)
+    m  = np.array(tree_reco.mass)
+    q  = np.array(tree_reco.charge)
     pt = np.array(tree_reco.pt)
     th = np.array(tree_reco.theta)
     d0 = np.array(tree_reco.d0)
     z0 = np.array(tree_reco.z0)
-    
+ 
     if len(px) == 0:
         return
-    
-    # Track if ANY systematic passed selection for this event
-    any_passed = False
-    
+ 
     # Loop over all systematics
     for syst_name, syst_config in systematics.items():
         thrust_gen = thrust_gen_dict.get(syst_name) if thrust_gen_dict else None
-        
-        # Apply systematic variations (momentum scale, efficiency drops)
+ 
+        # Apply systematic variations
         varied = apply_systematic_variation(
             px, py, pz, m, q, pt, th, d0, z0,
             syst_config
         )
-        
+ 
         px_var = varied['px']
         py_var = varied['py']
         pz_var = varied['pz']
-        m_var = varied['m']
-        q_var = varied['q']
+        m_var  = varied['m']
+        q_var  = varied['q']
         pt_var = varied['pt']
         th_var = varied['th']
         d0_var = varied['d0']
         z0_var = varied['z0']
-        
+ 
         if len(px_var) == 0:
             continue
-        
-        # Apply particle selection with configurable cuts
+ 
+        # Apply particle selection
         selection = apply_track_selection_delphi(
             px=px_var, py=py_var, pz=pz_var, m=m_var, q=q_var,
             th=th_var, pt=pt_var,
@@ -664,142 +649,128 @@ def process_reco_level(tree_reco, event_idx, systematics, reco_hists, response_m
             charged_pt_min=syst_config.get('charged_pt_min', 0.4),
             neutral_e_min=syst_config.get('neutral_e_min', 0.5),
         )
-        
+ 
         sel_all = selection['sel']
-        
         if not np.any(sel_all):
             continue
-        
+ 
         # Extract selected particles
         px_sel = px_var[sel_all]
         py_sel = py_var[sel_all]
         pz_sel = pz_var[sel_all]
-        m_sel = m_var[sel_all]
-        q_sel = q_var[sel_all]
-        
-        sel_c_final = np.abs(q_sel) > 0.1  
-        sel_n_final = ~sel_c_final          
-        
-        # Calculate event weight
+        m_sel  = m_var[sel_all]
+        q_sel  = q_var[sel_all]
+ 
+        sel_c_final = np.abs(q_sel) > 0.1
+        sel_n_final = ~sel_c_final
+ 
+        # Event weight (only for use_evt_weight systematic)
         evt_weight = 1.0
         if syst_config.get('use_evt_weight'):
             n_total_sel = len(px_sel)
             evt_weight = calc_multiplicity_weight_linear(n_total_sel)
-        
+ 
         # Calculate thrust
         thrust_vals = calculate_all_thrust_variants(
             px_sel, py_sel, pz_sel, m_sel, q_sel,
             sel_c_final, sel_n_final,
             include_met=True
         )
-        
-        # Prepare energies for event selection
-        e_c = np.sqrt(px_sel[sel_c_final]**2 + py_sel[sel_c_final]**2 + 
+ 
+        # Energies for event selection
+        e_c = np.sqrt(px_sel[sel_c_final]**2 + py_sel[sel_c_final]**2 +
                       pz_sel[sel_c_final]**2 + m_sel[sel_c_final]**2)
         e_all = np.sqrt(px_sel**2 + py_sel**2 + pz_sel**2 + m_sel**2)
-        
-        # Track if THIS systematic passed any event selection
+ 
         passed_p_all = False
         passed_e_all = False
         passed_p_charged = False
         passed_e_charged = False
-        
+ 
         # ===================================================================
-        # P-SCHEME (ALL PARTICLES) EVENT SELECTION
+        # SINGLE EVENT SELECTION (P-scheme all-particle)
+        # All four thrust variants and all four response matrices are gated
+        # on this same selection. No per-variant recomputation.
         # ===================================================================
         theta_thrust_p = thrust_theta(thrust_vals['axis'], thrust_vals['T'], fold=False)
-        event_sel_p = apply_event_selection_delphi(
-            e_c=e_c, 
+        event_sel = apply_event_selection_delphi(
+            e_c=e_c,
             e_n=e_all,
             theta_Tu=theta_thrust_p,
-            E_reco=E
+            E_reco=E,
         )
-        
-        if event_sel_p['pass_reco']:
-            passed_p_all = True
-            # Fill P-scheme histograms
-            reco_hists[syst_name][f'ThrustMissPNC2_{syst_name}'].Fill(thrust_vals['thrust'], evt_weight)
-            reco_hists[syst_name][f'ThrustMissPNCLog2_{syst_name}'].Fill(thrust_vals['thrust_log'], evt_weight)
-            
-            # Fill P-scheme response matrices
-            if is_mc and thrust_gen is not None:
-                matrices = response_matrices[syst_name]
-                matrices[f'response_thrust2_{syst_name}'].Fill(thrust_vals['thrust'], thrust_gen['thrust'])
-                matrices[f'response_thrust_log2_{syst_name}'].Fill(thrust_vals['thrust_log'], thrust_gen['thrust_log'])
-        
-        # ===================================================================
-        # E-SCHEME (ALL PARTICLES) EVENT SELECTION
-        # ===================================================================
-        theta_thrust_e = thrust_theta(thrust_vals['axis_escheme'], thrust_vals['T_escheme'], fold=False)
-        event_sel_e = apply_event_selection_delphi(
-            e_c=e_c, 
-            e_n=e_all,
-            theta_Tu=theta_thrust_e,
-            E_reco=E
-        )
-        
-        is_nominal = False
+ 
         is_nominal = (syst_name == 'nominal')
-
-        if event_sel_e['pass_reco']:
+ 
+        if event_sel['pass_reco']:
+            passed_p_all = True
             passed_e_all = True
-            # Fill E-scheme histograms
-            reco_hists[syst_name][f'ThrustMissPNC2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_escheme'], evt_weight)
-            reco_hists[syst_name][f'ThrustMissPNCLog2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_log_escheme'], evt_weight)
-            
-            # Fill E-scheme response matrices
-            if is_mc and thrust_gen is not None:
-                matrices = response_matrices[syst_name]
-                matrices[f'response_thrust2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_escheme'], thrust_gen['thrust_escheme'])
-                matrices[f'response_thrust_log2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_log_escheme'], thrust_gen['thrust_log_escheme'])
-        
-        # ===================================================================
-        # CHARGED P-SCHEME EVENT SELECTION
-        # ===================================================================
-        theta_thrust_c = thrust_theta(thrust_vals['axis_charged'], thrust_vals['T_charged'], fold=False)
-        event_sel_c = apply_event_selection_delphi(
-            e_c=e_c, 
-            e_n=e_all,
-            theta_Tu=theta_thrust_c,
-            E_reco=E
-        )
-        
-        if event_sel_c['pass_reco']:
             passed_p_charged = True
-            # Fill charged P-scheme histograms
-            reco_hists[syst_name][f'ThrustC2_{syst_name}'].Fill(thrust_vals['thrust_charged'], evt_weight)
-            reco_hists[syst_name][f'ThrustCLog2_{syst_name}'].Fill(thrust_vals['thrust_charged_log'], evt_weight)
-            
-            # Fill charged P-scheme response matrices
-            if is_mc and thrust_gen is not None:
-                matrices = response_matrices[syst_name]
-                matrices[f'response_thrustC2_{syst_name}'].Fill(thrust_vals['thrust_charged'], thrust_gen['thrust_charged'])
-                matrices[f'response_thrustC_log2_{syst_name}'].Fill(thrust_vals['thrust_charged_log'], thrust_gen['thrust_charged_log'])
-        
-        # ===================================================================
-        # CHARGED E-SCHEME EVENT SELECTION
-        # ===================================================================
-        theta_thrust_ce = thrust_theta(thrust_vals['axis_charged_escheme'], thrust_vals['T_charged_escheme'], fold=False)
-        event_sel_ce = apply_event_selection_delphi(
-            e_c=e_c, 
-            e_n=e_all,
-            theta_Tu=theta_thrust_ce,
-            E_reco=E
-        )
-        
-        if event_sel_ce['pass_reco']:
             passed_e_charged = True
-            # Fill charged E-scheme histograms
-            reco_hists[syst_name][f'ThrustC2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_charged_escheme'], evt_weight)
-            reco_hists[syst_name][f'ThrustCLog2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_charged_log_escheme'], evt_weight)
-            
-            # Fill charged E-scheme response matrices
+ 
+            h = reco_hists[syst_name]
+ 
+            # --- P-scheme all-particle ---
+            h[f'ThrustMissPNC2_{syst_name}'].Fill(thrust_vals['thrust'], evt_weight)
+            h[f'ThrustMissPNCLog2_{syst_name}'].Fill(thrust_vals['thrust_log'], evt_weight)
+ 
+            # --- E-scheme all-particle ---
+            h[f'ThrustMissPNC2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_escheme'], evt_weight)
+            h[f'ThrustMissPNCLog2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_log_escheme'], evt_weight)
+ 
+            # --- Charged P-scheme ---
+            h[f'ThrustC2_{syst_name}'].Fill(thrust_vals['thrust_charged'], evt_weight)
+            h[f'ThrustCLog2_{syst_name}'].Fill(thrust_vals['thrust_charged_log'], evt_weight)
+ 
+            # --- Charged E-scheme ---
+            h[f'ThrustC2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_charged_escheme'], evt_weight)
+            h[f'ThrustCLog2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_charged_log_escheme'], evt_weight)
+ 
+            # --- Response matrices (MC only) ---
             if is_mc and thrust_gen is not None:
-                matrices = response_matrices[syst_name]
-                matrices[f'response_thrustC2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_charged_escheme'], thrust_gen['thrust_charged_escheme'])
-                matrices[f'response_thrustC_log2_Escheme_{syst_name}'].Fill(thrust_vals['thrust_charged_log_escheme'], thrust_gen['thrust_charged_log_escheme'])
-        
-        # After the systematic loop, fill counter for each scenario
+                M = response_matrices[syst_name]
+                M[f'response_thrust2_{syst_name}'].Fill(
+                    thrust_vals['thrust'], thrust_gen['thrust'])
+                M[f'response_thrust_log2_{syst_name}'].Fill(
+                    thrust_vals['thrust_log'], thrust_gen['thrust_log'])
+                M[f'response_thrust2_Escheme_{syst_name}'].Fill(
+                    thrust_vals['thrust_escheme'], thrust_gen['thrust_escheme'])
+                M[f'response_thrust_log2_Escheme_{syst_name}'].Fill(
+                    thrust_vals['thrust_log_escheme'], thrust_gen['thrust_log_escheme'])
+                M[f'response_thrustC2_{syst_name}'].Fill(
+                    thrust_vals['thrust_charged'], thrust_gen['thrust_charged'])
+                M[f'response_thrustC_log2_{syst_name}'].Fill(
+                    thrust_vals['thrust_charged_log'], thrust_gen['thrust_charged_log'])
+                M[f'response_thrustC2_Escheme_{syst_name}'].Fill(
+                    thrust_vals['thrust_charged_escheme'], thrust_gen['thrust_charged_escheme'])
+                M[f'response_thrustC_log2_Escheme_{syst_name}'].Fill(
+                    thrust_vals['thrust_charged_log_escheme'], thrust_gen['thrust_charged_log_escheme'])
+ 
+            # --- Reco moment accumulators ---
+            if moment_hists is not None:
+                fill_moments_all_variants(
+                    moment_hists['reco'][syst_name],
+                    scenario='reco',
+                    syst_name=syst_name,
+                    thrust_vals=thrust_vals,
+                    weight=evt_weight,
+                    tau_max=TAU_MAX_PHYS,
+                )
+ 
+                # --- gen_passReco moment accumulators (MC only) ---
+                # Uses the GEN-level thrust values for this same event,
+                # gated by the reco event selection passing.
+                if is_mc and thrust_gen is not None:
+                    fill_moments_all_variants(
+                        moment_hists['gen_passReco'][syst_name],
+                        scenario='gen_passReco',
+                        syst_name=syst_name,
+                        thrust_vals=thrust_gen,
+                        weight=evt_weight,
+                        tau_max=TAU_MAX_PHYS,
+                    )
+ 
+        # After event_sel block, fill counter for each scenario
         if is_nominal:
             if passed_p_all and counter is not None:
                 counter.Fill(1.5)  # Bin 2
@@ -809,16 +780,16 @@ def process_reco_level(tree_reco, event_idx, systematics, reco_hists, response_m
                 counter.Fill(3.5)  # Bin 4
             if passed_e_charged and counter is not None:
                 counter.Fill(4.5)  # Bin 5
-
+ 
         if syst_config.get('use_evt_weight'):
             if passed_p_all and counter_weighted is not None:
-                counter_weighted.Fill(1.5, evt_weight)  # Bin 2
-            if passed_e_all and counter_weighted is not None:  # ← Fix: was "counter"
-                counter_weighted.Fill(2.5, evt_weight)  # Bin 3
-            if passed_p_charged and counter_weighted is not None:  # ← Fix: was "counter"
-                counter_weighted.Fill(3.5, evt_weight)  # Bin 4
-            if passed_e_charged and counter_weighted is not None:  # ← Fix: was "counter"
-                counter_weighted.Fill(4.5, evt_weight)  # Bin 5
+                counter_weighted.Fill(1.5, evt_weight)
+            if passed_e_all and counter_weighted is not None:
+                counter_weighted.Fill(2.5, evt_weight)
+            if passed_p_charged and counter_weighted is not None:
+                counter_weighted.Fill(3.5, evt_weight)
+            if passed_e_charged and counter_weighted is not None:
+                counter_weighted.Fill(4.5, evt_weight)
 
 # ============================================================================
 # MAIN FUNCTION
@@ -892,6 +863,8 @@ def main():
     reco_hists = {}
     for syst_name in systematics_to_run.keys():
         reco_hists[syst_name] = create_reco_histograms(syst_name)
+
+    moment_hists = create_all_moment_histograms(systematics_to_run)
     
     # Create response matrices (all systematics in MC)
     response_matrices = {}
@@ -918,7 +891,8 @@ def main():
             process_gen_level(
                 tree_gen_before, tree_gen, iEvt, gen_hists,
                 charged_pt_min=0.4,  # Doesn't matter, gen_hists filling doesn't use these
-                neutral_e_min=0.5
+                neutral_e_min=0.5,
+                moment_hists=moment_hists,
             )
         
         # Process gen level (MC only)
@@ -928,7 +902,7 @@ def main():
                 thrust_gen_dict[syst_name] = process_gen_level(
                     tree_gen_before, tree_gen, iEvt, None,  # gen_hists=None, don't fill again
                     charged_pt_min=syst_config.get('charged_pt_min', 0.4),
-                    neutral_e_min=syst_config.get('neutral_e_min', 0.5)
+                    neutral_e_min=syst_config.get('neutral_e_min', 0.5),
                 )
         
         # Process reco level (always)
@@ -940,7 +914,8 @@ def main():
             thrust_gen_dict=thrust_gen_dict,
             is_mc=args.is_mc,
             counter=counter,
-            counter_weighted=counter_weighted
+            counter_weighted=counter_weighted,
+            moment_hists=moment_hists, 
         )
         
         n_processed += 1
@@ -985,6 +960,8 @@ def main():
             for matrix in matrices.values():
                 matrix.Write()
         fout.cd()
+
+    write_moment_histograms(fout, moment_hists, top_dir='moments')
     
     fout.Close()
     fin.Close()

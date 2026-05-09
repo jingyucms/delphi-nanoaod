@@ -60,7 +60,7 @@ def build_input_pattern(nickname):
     else:
         # MC: read from TPCNtuple directory
         stream = cfg["stream"]
-        input_dir = base / year / energy / "MC" / short_version / "TPCNtuple" / stream / "260320"
+        input_dir = base / year / energy / "MC" / short_version / "TPCNtuple" / stream / "251219"
     
     return str(input_dir)
 
@@ -102,39 +102,38 @@ def is_mc_sample(nickname):
 #executable = "analysis_correlation.py"
 #executable = "analysis_eec_lep2.py"
 #executable = "analysis_eec.py"
-executable = "analysis_fbcec.py"
+#executable = "analysis_fbcec.py"
 #executable = "correction_fbcc.py"
-#executable = "estimate_fake.py"
-#executable = "select_v0.py"
 #executable = "analysis_trk.py"
 #executable = "create_response_matrices.py"
 #executable = "create_response_matrices_thrust.py"
-#executable = "analysis_thrust.py"
+executable = "analysis_thrust.py"
 
 nicknames = [
-    #"sh_kk2f4146qqpy_e91.25_c94_2l_c2",
-    #"sh_kk2f4146qqardcy_e91.25_r94_2l_c2",
+    "sh_kk2f4146qqpy_e91.25_c94_2l_c2",
+    "sh_kk2f4146qqardcy_e91.25_r94_2l_c2",
     "sh_pythia8_94c",
-    #"sh_pythia8_dire_94c",
-    #"sh_kk2f4146qqpy_e91.25_c95_1l_d2",
-    #"sh_pythia8_95d",
-    #"sh_pythia8_dire_95d",
-    "short94_c2"
-    #"short95_d2"
+    "sh_pythia8_dire_94c",
+    "sh_kk2f4146qqpy_e91.25_c95_1l_d2",
+    "sh_pythia8_95d",
+    "sh_pythia8_dire_95d",
+    "short94_c2",
+    "short95_d2"
 #    "ALEPHMC"
 #    "ALEPH"
 ]
 
-#nicknames = [
-#    "sh_kk2f_isr_on_94c",
-#    "sh_kk2f_isr_off_94c",
+nicknames = [
+    "sh_kk2f_isr_on_94c",
+    "sh_kk2f_isr_off_94c",
 #    "sh_pythia8_bb_94c",
 #    "sh_pythia8_cc_94c",
 #    "sh_pythia8_ss_94c",
 #    "sh_pythia8_light_94c"
-#]
+]
 
-version = "v56"
+
+version = "v67"
 
 # Loop through each nickname
 for nickname in nicknames:

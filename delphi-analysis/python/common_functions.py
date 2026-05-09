@@ -881,21 +881,22 @@ def ReadFilesFromList(infile):
 
 ## Helpers for matching ##
 
-def match_angular(rec: P4Block, gen: P4Block, r):
+def match_angular(rec: P4Block, gen: P4Block, r, require_same_charge=True):
 
     # --- distance matrix -------------------------------------------------
     dot      = rec.p @ gen.p.T
     cos      = np.clip(dot / np.outer(rec.norm, gen.norm), -1., 1.)
     rvals    = np.arccos(cos)                  # 0 … π  (always ≥0)
 
-    # --- cost matrix: ΔR, but “inf” for opposite charge ------------------
+    # --- cost matrix: ΔR, optionally “inf” for opposite charge -----------
     cost = rvals.copy()
-    cost[(rec.q[:, None] * gen.q[None, :]) < 0] = 9999   # forbid q·Q ≤ 0
+    if require_same_charge:
+        cost[(rec.q[:, None] * gen.q[None, :]) < 0] = 9999   # forbid q·Q ≤ 0
 
     # Hungarian assignment
     row, col = linear_sum_assignment(cost)
 
-    # keep only pairs with ΔR < match_r  (charge sign already enforced)
+    # keep only pairs with ΔR < match_r
     good = rvals[row, col] < r
     ireco, igen = row[good], col[good]
 

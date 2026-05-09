@@ -36,11 +36,10 @@ zbins = calcBinEdge(0.000001, 0.5, 100)
 tbins = np.linspace(-0.1, 0.5, 61)
 logtbins = np.linspace(-10, 0, 101)
 
-# fine binning to make it easier to rebin for different binning scheme for final comparison
 tbins2 = [-0.1, 0.00, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10,
-    0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 0.19, 0.20, 0.21, 0.22, 0.23, 
-    0.24, 0.25, 0.26, 0.27, 0.28, 0.29, 0.30, 0.31, 0.32, 0.33, 0.34, 0.35, 0.36, 
-    0.4, 0.50, 1.0]
+          0.11, 0.12, 0.13, 0.14, 0.15, 0.16, 0.17, 0.18, 0.19, 0.20, 0.21, 0.22, 0.23, 
+          0.24, 0.25, 0.26, 0.27, 0.28, 0.29, 0.30, 0.31, 0.32, 0.33, 0.34, 0.35, 0.36, 
+          0.4, 0.50, 1.0] 
 
 tbinsDelphi = [-0.1, 0.0, 0.01, 0.02, 0.03, 0.04,
          0.05, 0.06, 0.07, 0.08, 0.09,
@@ -245,10 +244,9 @@ def apply_track_selection_delphi(px=None, py=None, pz=None, m=None, q=None, th=N
         abs_z0sin = np.abs(z0 * sin_th)
 
         e = np.sqrt(px**2 + py**2 + pz**2 + m**2)
-        p = np.sqrt(px**2 + py**2 + pz**2)
         
         # Charged particle selection (reconstructed)
-        core_charged = (abs_c > 0.1) & (p > charged_pt_min) & (abs_d0 < charged_d0_max) & (abs_z0sin < charged_z0sin_max)
+        core_charged = (abs_c > 0.1) & (pt > charged_pt_min) & (abs_d0 < charged_d0_max) & (abs_z0sin < charged_z0sin_max)
         sel_c = core_charged & angle_accept
         
         # Neutral particle selection (reconstructed)
@@ -271,11 +269,10 @@ def apply_track_selection_delphi(px=None, py=None, pz=None, m=None, q=None, th=N
         angle_accept_gen = (th_gen > np.deg2rad(theta_min_deg)) & (th_gen < np.deg2rad(theta_max_deg))
 
         e_gen = np.sqrt(px_gen**2 + py_gen**2 + pz_gen**2 + m_gen**2)
-        p_gen = np.sqrt(px_gen**2 + py_gen**2 + pz_gen**2)
         
         # Charged particle selection (generated)
         # Note: No track quality cuts (d0, z0) at generator level
-        core_charged_gen = (abs_c_gen > 0.1) & (p_gen > charged_pt_min)
+        core_charged_gen = (abs_c_gen > 0.1) & (pt_gen > charged_pt_min)
         sel_c_gen = core_charged_gen & angle_accept_gen
         
         # Neutral particle selection (generated)

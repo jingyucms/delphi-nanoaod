@@ -93,7 +93,7 @@ def build_patterns(nickname):
             for subdir in cfg["subdirs"]:
                 pattern = str(opendata_dir / "collision-data" / subdir / f"*{cfg['extension']}")
                 patterns.append(pattern)
-    elif cfg["stream"] in ["pythia8", "pythia8_dire", "pythia8_bb", "pythia8_cc", "pythia8_ss", "pythia8_light", "kk2f_ISRon", "kk2f_ISRoff"]:
+    elif cfg["stream"] in ["pythia8", "pythia8_dire", "pythia8_ee", "pythia8_mm", "pythia8_tt", "pythia8_bb", "pythia8_cc", "pythia8_ss", "pythia8_light", "kk2f_ISRon", "kk2f_ISRoff"]:
         # Pythia8 files are in the new EOS structure under SDST
         year, short_version = extract_version_info(cfg["version"])
         energy = cfg.get("copy_energy") or cfg["energy"]
@@ -161,18 +161,15 @@ if __name__ == "__main__":
 
     config = load_config()
     
-    nickname = "short94_c2"
-    #nickname = "sh_qqps_e91.25_c94_2l_c2"
+    #nickname = "short94_c2"
     #nickname = "sh_kk2f4146qqpy_e91.25_c94_2l_c2"
-    #nickname = "sh_kk2f4146qqpydcy_e91.25_c94_2l_c2"
     #nickname = "sh_kk2f4146qqardcy_e91.25_r94_2l_c2"
-    #nickname = "sh_apacic105_e91.25_w94_2l_c2"
-    #nickname = "sh_zgpy_b94_2l_c2" 
-    #nickname = "sh_qqps_k94_2l_c2"
     #nickname = "sh_pythia8_94c"
     #nickname = "sh_pythia8_dire_94c"
-    #nickname = "sh_kk2f4146tthl_e91.25_c94_2l_c2"
 
+    #nickname = "sh_pythia8_ee_94c"
+    #nickname = "sh_pythia8_mm_94c"
+    #nickname = "sh_pythia8_tt_94c"
     #nickname = "sh_pythia8_bb_94c"
     #nickname = "sh_pythia8_cc_94c"
     #nickname = "sh_pythia8_ss_94c"
@@ -183,8 +180,12 @@ if __name__ == "__main__":
 
     #nickname = "short95_d2"
     #nickname = "sh_kk2f4146qqpy_e91.25_c95_1l_d2"
-    #nickname = "sh_pythia8_95d"
+    nickname = "sh_pythia8_95d"
     #nickname = "sh_pythia8_dire_95d"
+
+    #nickname = "sh_pythia8_ee_95d"
+    #nickname = "sh_pythia8_mm_95d"
+    #nickname = "sh_pythia8_tt_95d"
 
     #nickname = "xsdst99_e192_e1"
     #nickname = "xsdst99_e196_e1"
