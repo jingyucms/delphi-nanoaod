@@ -64,6 +64,8 @@ private:
     void fillStic();        // PA.SSTC -> Stic_* (one row per track with STIC)
     void defineMuidEl(std::unique_ptr<RNTupleModel> &model);
     void fillMuidEl();      // PA.MUID + PA.ELID -> MuidRaw_* + ElidRaw_*
+    void defineHaidRich(std::unique_ptr<RNTupleModel> &model);
+    void fillHaidRich();    // PA.HAID -> HaidRaw_* + RichRaw_* (per PSHHAD)
     void defineTrac(std::unique_ptr<RNTupleModel> &model);
     void fillTrac();        // PA.TRAC + PA.MAIN -> TracRaw_* per charged track
     void defineTrackElement(std::unique_ptr<RNTupleModel> &model);
@@ -92,6 +94,18 @@ private:
     std::shared_ptr<int>   Event_fillNumber_;
     std::shared_ptr<float> Event_bFieldTesla_;   // BTESLA from BPILOT
     std::shared_ptr<float> Event_bFieldGevCm_;   // BGEVCM from BPILOT — use as 1/R [1/cm] = BGEVCM / pT [GeV]
+
+    // Simulation truth primary vertex: read from the first entry of the
+    // simulated-PV bank at LQ(LDTOP-28) (shortDST sim) or LQ(LDTOP-18)
+    // (older fullDST sim). The bank stores DELSIM's smeared event
+    // interaction point; in the absence of a usable Event_beamSpot
+    // reference, this is the only legitimate truth-PV anchor for MC
+    // events. errorFlag = 0 if the bank was found and unpacked, -1
+    // otherwise (real data, missing sim banks, etc.).
+    std::shared_ptr<float>        Event_simPVX_;
+    std::shared_ptr<float>        Event_simPVY_;
+    std::shared_ptr<float>        Event_simPVZ_;
+    std::shared_ptr<std::int8_t>  Event_simPVErrorFlag_;
 
     // EM-shower collections (M2).
     //
@@ -163,6 +177,40 @@ private:
     std::shared_ptr<std::vector<std::int32_t>>            ElidRaw_gammaConvTag_;    // Q(LELID+2) NINT
     std::shared_ptr<std::vector<XYZVectorF>>              ElidRaw_refitMomentum_;   // Q(LELID+3..5)
 
+    // --- HAID: PA.HAID hadron-ID + RICH measurements.
+    // Direct PHDST-level decode of the variable-length HAID bank, mirroring
+    // SKELANA's PSHHAD (skelana.car L3819+). One row per PA-track that has
+    // a HAID sub-bank. RICH gas/liquid sections may be present independently
+    // (a track sees only one radiator, depending on its momentum).
+    //   HaidRaw_*  : tags from the IDATI ionization section of HAID, plus
+    //                richQuality from the IDATQ section. Tag values are
+    //                signed integers in the range [-1..6] per Table I of the
+    //                DELPHI HADID note (SKELANA's KHAID convention):
+    //                -1 = no info, 0 = inconsistent, >=1 = ranked likelihood.
+    //   RichRaw_*  : per-radiator (gas / liquid) Cherenkov-angle, sigma,
+    //                observed/expected photon counts, sector flag.
+    std::shared_ptr<std::int16_t>                         nHaidRaw_;
+    std::shared_ptr<std::vector<std::int16_t>>            HaidRaw_paIdx_;
+    std::shared_ptr<std::vector<std::int8_t>>             HaidRaw_kaonRich_;        // KHAID(4) JBYT(IQ(LPA+3),13,3)-1
+    std::shared_ptr<std::vector<std::int8_t>>             HaidRaw_protonRich_;      // KHAID(5) JBYT(IQ(LPA+3),16,3)-1
+    std::shared_ptr<std::vector<std::int8_t>>             HaidRaw_pionRich_;        // KHAID(6) JBYT(IHAD1,11,3)-1
+    std::shared_ptr<std::vector<std::int8_t>>             HaidRaw_kaonDedx_;        // KHAID(2) JBYT(IHAD1,1,3)-1
+    std::shared_ptr<std::vector<std::int8_t>>             HaidRaw_protonDedx_;      // KHAID(3) JBYT(IHAD1,4,3)-1
+    std::shared_ptr<std::vector<float>>                   HaidRaw_kaonCombined_;    // QHAID(7) (MOD(IHAD2,100)-10)/10
+    std::shared_ptr<std::vector<float>>                   HaidRaw_protonCombined_;  // QHAID(8) (IHAD2/100-10)/10
+    std::shared_ptr<std::vector<std::int8_t>>             HaidRaw_richQuality_;     // KHAID(9) NINT(Q(LHAID+IDAT+1)) at IDATQ section
+
+    std::shared_ptr<std::vector<float>>                   HaidRaw_thetaGas_;        // QGRIC(1) Q(LHAID+IDAT+1) gas Cherenkov angle (rad)
+    std::shared_ptr<std::vector<float>>                   HaidRaw_sigmaGas_;        // QGRIC(2) Q(LHAID+IDAT+2) gas sigma
+    std::shared_ptr<std::vector<std::int16_t>>            HaidRaw_nphGas_;          // KGRIC(3) MOD(NINT(Q(LHAID+IDAT+3)),500) observed photons in ring
+    std::shared_ptr<std::vector<float>>                   HaidRaw_nepGas_;          // QGRIC(4) AINT(Q(LHAID+IDAT+3)/500)/10 expected photons (ISVER>102)
+    std::shared_ptr<std::vector<std::int8_t>>             HaidRaw_flagGas_;         // KGRIC(5) NINT(Q(LHAID+IDAT+4)) sector flag
+    std::shared_ptr<std::vector<float>>                   HaidRaw_thetaLiq_;        // QLRIC(1)
+    std::shared_ptr<std::vector<float>>                   HaidRaw_sigmaLiq_;        // QLRIC(2)
+    std::shared_ptr<std::vector<std::int16_t>>            HaidRaw_nphLiq_;          // KLRIC(3)
+    std::shared_ptr<std::vector<float>>                   HaidRaw_nepLiq_;          // QLRIC(4)
+    std::shared_ptr<std::vector<std::int8_t>>             HaidRaw_flagLiq_;         // KLRIC(5)
+
     // --- Track raw (M6): PA.TRAC + PA.MAIN. One row per charged track
     // (Q(LMAIN+8) != 0). Follows SKELANA PSHTRA / PSCTRA (stdcdes.car
     // +KEEP,PSCTRA). The 20-word TRAC payload carries the perigee
@@ -213,6 +261,15 @@ private:
     std::shared_ptr<std::vector<float>>                   TrackElement_theta_;
     std::shared_ptr<std::vector<float>>                   TrackElement_phi_;
     std::shared_ptr<std::vector<float>>                   TrackElement_invPOrPt_;
+    // Raw covariance tail words (variable length). The block size N is
+    // popcount(dataDescriptor & measurement-bits); the first N*(N+1)/2
+    // words are the lower-triangular error matrix of the measured
+    // sub-set of (X/R, Y/RPhi, Z, theta, phi, 1/P). We pass through up
+    // to 21 words (matches a 6-coord fit at most). Anything beyond is
+    // the PXDST-251+ footer (nDoF, chi2, length); also passed through
+    // when present.
+    std::shared_ptr<std::vector<std::array<float, 21>>>   TrackElement_covTail_;
+    std::shared_ptr<std::vector<std::int8_t>>             TrackElement_covTailLength_;
 
     // --- VD hits (M7): the MVDH event-level bank at LQ(LDTOP - 21).
     // Per SKELANA PSHVDH (skelana.car L4379) and PSCVDA / PSCVDU

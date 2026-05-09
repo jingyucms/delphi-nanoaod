@@ -8,3 +8,6 @@ eos
 xs*/
 *.log
 dict*
+build/
+build_raw/
+build_container/

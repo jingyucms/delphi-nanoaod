@@ -6,15 +6,45 @@
 #include <unordered_map>
 
 #include "skelana/pscluj.hpp"
+#include "skelana/pscvec.hpp"
+#include "skelana/pschad.hpp"
+#include "skelana/pscgrc.hpp"
+#include "skelana/psclrc.hpp"
 
 namespace sk = skelana;
 
-// PSHMC: SKELANA fortran entry point that reads the DELPHI simulation banks
-// (LQ(LDTOP-28)/(LDTOP-29) on shortDST, the fullDST equivalents otherwise)
-// and populates the PSCLUJ common block with a LUJETS-style event record.
-// We call it from fillGenPart(); we do NOT otherwise run any SKELANA logic
-// from this PHDST-level writer.
-extern "C" void pshmc_();
+// PSHLUJ / PSFLUJ: SKELANA fortran entry points that unpack the DELPHI
+// simulation banks into the PSCLUJ LUJETS-like event record. PSHLUJ handles
+// the shortDST simulation structure (LQ(LDTOP-28)/(LDTOP-29)); PSFLUJ handles
+// the fullDST structure (walks the SH chain rooted at LQ(LDTOP-3)).
+//
+// We deliberately do NOT call SKELANA's PSHMC wrapper (which dev-fullDST's
+// PR #5 used) because PSHMC also invokes PSHSIM / PSFSIM to fill the
+// sim-track collection, and PSFSIM crashes if the expected sim-track banks
+// aren't present (seen on Z->bb shortDST: the shortDST-sim gate inside
+// PSHMC fails, PSHMC falls through to PSFSIM which then faults). Routing
+// directly to PSHLUJ / PSFLUJ based on bank presence gives us the LUJETS
+// truth we want without dragging in the sim-track machinery.
+extern "C" void pshluj_();
+extern "C" void psfluj_();
+
+// PSINI: SKELANA's once-per-job init. Sets default IFLxxx flags,
+// initialises the VD subsystem (VDIDST), registers PA-extra-modules
+// in PHDST's IPHREQ tables. Without it, LPHPA('HAID',...),
+// LPHPA('MUID',...), LPHPA('ELID',...) and other PA-extra-module
+// lookups silently return 0 even when the bank is present in the
+// fadana — LPHPA lacks the registry mapping module name -> bank ID.
+// Verified empirically: under raw-nanoaod (no PSINI), the OLD
+// skelana-based writer extracts 1822 nonzero RICH tags from the same
+// fadana that our PHDST walk reports as bank-empty.
+extern "C" void psini_();
+// PSBEG: SKELANA's per-event "begin" hook. Drives the SKELANA processing
+// pipeline: PSCRUN/PSCEVT walk the PA chain and dispatch PSHHAD/PSHMUD/etc.
+// per track, populating the SKELANA commons. Side effect that we need: it
+// also makes the PA-extra-module bank pointers reachable to LPHPA. Without
+// it, LPHPA('HAID', lpa, 0) returns 0 even when the bank is in the file
+// (verified empirically against the OLD skelana-based writer's output).
+extern "C" void psbeg_();
 
 // -----------------------------------------------------------------------------
 // Field-registration helpers, copied from delphi-nanoaod/src/nanoaod_writer.cpp.
@@ -57,12 +87,19 @@ void RawNanoAODWriter::user00()
 {
     super::user00();
 
+    // SKELANA once-per-job init. Required for LPHPA('HAID',...) etc. to
+    // succeed on PA-extra-module lookups (registers the module-name <->
+    // bank-ID table that LPHPA walks internally). Side effect: also sets
+    // IFLxxx default flags and initialises VD via VDIDST. Cheap.
+    psini_();
+
     std::unique_ptr<RNTupleModel> model = RNTupleModel::Create();
     defineEvent(model);
     defineEmShower(model);
     defineHadShower(model);
     defineStic(model);
     defineMuidEl(model);
+    defineHaidRich(model);
     defineTrac(model);
     defineTrackElement(model);
     defineVdHit(model);
@@ -87,11 +124,18 @@ int RawNanoAODWriter::user01()
 void RawNanoAODWriter::user02()
 {
     super::user02();
+    // SKELANA per-event hook. Triggers PA-extra-module decode (PSHHAD,
+    // PSHMUD, PSHELD, ...) and makes LPHPA('HAID',...) etc. work. Without
+    // this our HAID / MUID / ELID extractors get 0 hits despite the bank
+    // being present (cross-checked vs the OLD skelana-based writer on the
+    // same fadana — it gets nonzero entries via PSHHAD/sk::KHAID).
+    psbeg_();
     fillEvent();
     fillEmShowers();
     fillHadShowers();
     fillStic();
     fillMuidEl();
+    fillHaidRich();
     fillTrac();
     fillTrackElement();
     fillVdHit();
@@ -148,6 +192,10 @@ void RawNanoAODWriter::defineEvent(std::unique_ptr<RNTupleModel> &model)
     MakeField(model, "Event_bFieldTesla",        "BPILOT output: solenoid B (Tesla)", Event_bFieldTesla_);
     MakeField(model, "Event_bFieldGevCm",        "BPILOT output: 1/R [1/cm] = BGEVCM / pT [GeV]", Event_bFieldGevCm_);
     MakeField(model, "Event_isMC",               "1 if the simulation structure (PSCLUJ) is populated for this event, 0 for real data", Event_isMC_);
+    MakeField(model, "Event_simPVX",             "MC simulation truth interaction point x (cm), from the first entry of the simulated-PV bank at LQ(LDTOP-28); 0 if errorFlag != 0", Event_simPVX_);
+    MakeField(model, "Event_simPVY",             "MC simulation truth interaction point y (cm)", Event_simPVY_);
+    MakeField(model, "Event_simPVZ",             "MC simulation truth interaction point z (cm)", Event_simPVZ_);
+    MakeField(model, "Event_simPVErrorFlag",     "0 if a sim-PV bank was found and unpacked, -1 otherwise (real data, missing banks, fullDST without LDTOP-28)", Event_simPVErrorFlag_);
 }
 
 void RawNanoAODWriter::fillEvent()
@@ -162,6 +210,63 @@ void RawNanoAODWriter::fillEvent()
     auto bfield = ph::BPILOT();
     *Event_bFieldTesla_ = bfield.first;
     *Event_bFieldGevCm_ = bfield.second;
+
+    // Sim-truth primary vertex: read first entry of the simulated-PV bank
+    // (shortDST sim at LDTOP-28; fullDST sim at LDTOP-18 in older versions).
+    // Per SKELANA PSHLUJ (skelana.car L5219+): NPVS = IQ(LPVS+1) is the
+    // number of sim primary vertices in the chain; each occupies 6 words
+    // starting at LPVS + 1 + NPVS, with x/y/z at offsets +4 / +5 / +6 from
+    // the entry. The first entry is the actual interaction point.
+    *Event_simPVX_ = 0.f;
+    *Event_simPVY_ = 0.f;
+    *Event_simPVZ_ = 0.f;
+    *Event_simPVErrorFlag_ = -1;
+    if (ph::LDTOP > 0)
+    {
+        // shortDST sim layout: LPVS at LDTOP-28, with NPVS entries each
+        // 6 words (x at +4, y at +5, z at +6 from the per-vertex offset).
+        int lpvs = ph::LQ(ph::LDTOP - 28);
+        if (lpvs > 0)
+        {
+            const int npvs = ph::IQ(lpvs + 1);
+            if (npvs >= 1)
+            {
+                const int ip = lpvs + 1 + npvs;
+                *Event_simPVX_ = ph::Q(ip + 4);
+                *Event_simPVY_ = ph::Q(ip + 5);
+                *Event_simPVZ_ = ph::Q(ip + 6);
+                *Event_simPVErrorFlag_ = 0;
+            }
+        }
+        else
+        {
+            // fullDST sim layout: walk LSH chain at LDTOP-3, follow the
+            // first valid SH's LST link to its LPV via LSH-4 / LST+1.
+            // LPV stores x/y/z at +5/+6/+7. Per SKELANA PSFLUJ
+            // (skelana.car L7088).
+            int lsh = ph::LQ(ph::LDTOP - 3);
+            while (lsh > 0)
+            {
+                if (std::lround(ph::Q(lsh + 1)) != 0)
+                {
+                    int lst = ph::LQ(lsh - 4);
+                    if (lst > 0)
+                    {
+                        int lpv = ph::LQ(lst + 1);
+                        if (lpv > 0)
+                        {
+                            *Event_simPVX_ = ph::Q(lpv + 5);
+                            *Event_simPVY_ = ph::Q(lpv + 6);
+                            *Event_simPVZ_ = ph::Q(lpv + 7);
+                            *Event_simPVErrorFlag_ = 0;
+                            break;
+                        }
+                    }
+                }
+                lsh = ph::LQ(lsh);
+            }
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -495,6 +600,95 @@ void RawNanoAODWriter::fillMuidEl()
 }
 
 // -----------------------------------------------------------------------------
+// PA.HAID hadron-ID + RICH measurements (per-VECP-track).
+//
+// Reads SKELANA commons populated by PSBEG (called from user02 above):
+//   pschad_.khaid[i][...]   per-track HAID tags (KHAID(field, i))
+//   pscgrc_.theg/sigg/...   per-track RICH gas radiator
+//   psclrc_.thel/sigl/...   per-track RICH liquid radiator
+//
+// One row per VECP charged-track (i = LVPART .. NVECP). The OLD skelana-
+// based writer uses exactly this idiom (nanoaod_writer.cpp lines 1261+);
+// we mirror it here so PHDST and SKELANA writers produce identical
+// content from the same fadana.
+//
+// Earlier attempt: walk PA chain and call LPHPA('HAID', lpa, 0) directly
+// (mirroring PSHHAD bank-decode). LPHPA returned 0 even for tracks where
+// the bank was present and the OLD writer's PSHHAD found data. Empirical
+// conclusion: LPHPA on the PA-extra-module banks (HAID/MUID/ELID, IDs
+// 24-26) requires SKELANA's per-event setup (PSBEG); without it, the
+// extramodule registry isn't populated and bank lookups silently fail.
+// Reading from the SKELANA commons after PSBEG sidesteps this entirely.
+// -----------------------------------------------------------------------------
+void RawNanoAODWriter::defineHaidRich(std::unique_ptr<RNTupleModel> &model)
+{
+    MakeField(model, "nHaidRaw",                  "Number of VECP charged tracks with hadron-ID rows (one per VECP-i in [LVPART..NVECP])", nHaidRaw_);
+    MakeField(model, "HaidRaw_paIdx",             "VECP track index (1-based) — same ordering as Part_* in the OLD nanoaod writer", HaidRaw_paIdx_);
+    MakeField(model, "HaidRaw_kaonDedx",          "KHAID(2): kaon signature with dE/dx (-1=no info)",        HaidRaw_kaonDedx_);
+    MakeField(model, "HaidRaw_protonDedx",        "KHAID(3): proton signature with dE/dx",                   HaidRaw_protonDedx_);
+    MakeField(model, "HaidRaw_kaonRich",          "KHAID(4): kaon signature with RICH",                      HaidRaw_kaonRich_);
+    MakeField(model, "HaidRaw_protonRich",        "KHAID(5): proton signature with RICH",                    HaidRaw_protonRich_);
+    MakeField(model, "HaidRaw_pionRich",          "KHAID(6): pion signature with RICH",                      HaidRaw_pionRich_);
+    MakeField(model, "HaidRaw_kaonCombined",      "QHAID(7): combined kaon tag (-1..1)",                     HaidRaw_kaonCombined_);
+    MakeField(model, "HaidRaw_protonCombined",    "QHAID(8): combined proton tag",                           HaidRaw_protonCombined_);
+    MakeField(model, "HaidRaw_richQuality",       "KHAID(9): RICH quality status word",                      HaidRaw_richQuality_);
+    MakeField(model, "HaidRaw_thetaGas",          "QGRIC(1): RICH gas Cherenkov angle (rad)",                HaidRaw_thetaGas_);
+    MakeField(model, "HaidRaw_sigmaGas",          "QGRIC(2): RICH gas angle resolution",                     HaidRaw_sigmaGas_);
+    MakeField(model, "HaidRaw_nphGas",            "KGRIC(3): RICH gas observed photons in ring",             HaidRaw_nphGas_);
+    MakeField(model, "HaidRaw_nepGas",            "QGRIC(4): RICH gas expected photons (ISVER>102 form)",    HaidRaw_nepGas_);
+    MakeField(model, "HaidRaw_flagGas",           "KGRIC(5): RICH gas sector flag",                          HaidRaw_flagGas_);
+    MakeField(model, "HaidRaw_thetaLiq",          "QLRIC(1): RICH liquid Cherenkov angle (rad)",             HaidRaw_thetaLiq_);
+    MakeField(model, "HaidRaw_sigmaLiq",          "QLRIC(2): RICH liquid angle resolution",                  HaidRaw_sigmaLiq_);
+    MakeField(model, "HaidRaw_nphLiq",            "KLRIC(3): RICH liquid observed photons",                  HaidRaw_nphLiq_);
+    MakeField(model, "HaidRaw_nepLiq",            "QLRIC(4): RICH liquid expected photons",                  HaidRaw_nepLiq_);
+    MakeField(model, "HaidRaw_flagLiq",           "KLRIC(5): RICH liquid sector flag",                       HaidRaw_flagLiq_);
+}
+
+void RawNanoAODWriter::fillHaidRich()
+{
+    HaidRaw_paIdx_->clear();
+    HaidRaw_kaonDedx_->clear();      HaidRaw_protonDedx_->clear();
+    HaidRaw_kaonRich_->clear();      HaidRaw_protonRich_->clear();
+    HaidRaw_pionRich_->clear();
+    HaidRaw_kaonCombined_->clear();  HaidRaw_protonCombined_->clear();
+    HaidRaw_richQuality_->clear();
+    HaidRaw_thetaGas_->clear();      HaidRaw_sigmaGas_->clear();
+    HaidRaw_nphGas_->clear();        HaidRaw_nepGas_->clear();
+    HaidRaw_flagGas_->clear();
+    HaidRaw_thetaLiq_->clear();      HaidRaw_sigmaLiq_->clear();
+    HaidRaw_nphLiq_->clear();        HaidRaw_nepLiq_->clear();
+    HaidRaw_flagLiq_->clear();
+
+    // PSBEG (called in user02) populates these commons. Iterate over VECP
+    // and emit one row per charged-track (VECP-i in [LVPART..NVECP]). Same
+    // pattern as nanoaod_writer.cpp:1261+ in the OLD skelana-based writer.
+    for (int i = sk::LVPART; i <= sk::NVECP; ++i)
+    {
+        HaidRaw_paIdx_->push_back(static_cast<std::int16_t>(i));
+        HaidRaw_kaonDedx_->push_back(  static_cast<std::int8_t>(sk::KHAID(2, i)));
+        HaidRaw_protonDedx_->push_back(static_cast<std::int8_t>(sk::KHAID(3, i)));
+        HaidRaw_kaonRich_->push_back(  static_cast<std::int8_t>(sk::KHAID(4, i)));
+        HaidRaw_protonRich_->push_back(static_cast<std::int8_t>(sk::KHAID(5, i)));
+        HaidRaw_pionRich_->push_back(  static_cast<std::int8_t>(sk::KHAID(6, i)));
+        HaidRaw_kaonCombined_->push_back(  sk::QHAID(7, i));
+        HaidRaw_protonCombined_->push_back(sk::QHAID(8, i));
+        HaidRaw_richQuality_->push_back(static_cast<std::int8_t>(sk::KHAID(9, i)));
+
+        HaidRaw_thetaGas_->push_back(sk::THEG(i));
+        HaidRaw_sigmaGas_->push_back(sk::SIGG(i));
+        HaidRaw_nphGas_->push_back(  static_cast<std::int16_t>(sk::NPHG(i)));
+        HaidRaw_nepGas_->push_back(  sk::NEPG(i));
+        HaidRaw_flagGas_->push_back( static_cast<std::int8_t>(sk::FLAGG(i)));
+        HaidRaw_thetaLiq_->push_back(sk::THEL(i));
+        HaidRaw_sigmaLiq_->push_back(sk::SIGL(i));
+        HaidRaw_nphLiq_->push_back(  static_cast<std::int16_t>(sk::NPHL(i)));
+        HaidRaw_nepLiq_->push_back(  sk::NEPL(i));
+        HaidRaw_flagLiq_->push_back( static_cast<std::int8_t>(sk::FLAGL(i)));
+    }
+    *nHaidRaw_ = static_cast<std::int16_t>(HaidRaw_paIdx_->size());
+}
+
+// -----------------------------------------------------------------------------
 // Track raw — PA.TRAC + PA.MAIN (per PSHTRA / PSCTRA).
 // One row per charged track. Perigee parameters + weight matrix + track
 // length, chi2, detector flags, first-measured-point, number of d.o.f.
@@ -630,9 +824,11 @@ void RawNanoAODWriter::fillTrac()
 // Track elements — M7 payload for track refitting. Same layout across
 // PA.TETP(13, TPC), PA.TEID(12, ID), PA.TEOD(14, OD), PA.TEFA(15, FCA),
 // PA.TEFB(16, FCB). Each PA track has at most one TE per sub-detector.
-// See shortdst.des block PA.TETP(13) for the word layout; we save the
-// eight common header words and leave the variable-length error matrix
-// and PXDST-251+ footer (nDoF, chi2, length) as a TODO.
+// See shortdst.des block PA.TETP(13) for the word layout. We save the
+// eight common header words plus a 21-float covariance tail that holds
+// the lower-triangular error matrix of the measured sub-set followed by
+// the PXDST-251+ footer (nDoF, chi2, length). The valid prefix length
+// is in TrackElement_covTailLength.
 // -----------------------------------------------------------------------------
 void RawNanoAODWriter::defineTrackElement(std::unique_ptr<RNTupleModel> &model)
 {
@@ -646,6 +842,20 @@ void RawNanoAODWriter::defineTrackElement(std::unique_ptr<RNTupleModel> &model)
     MakeField(model, "TrackElement_theta",            "Q(LTE+6): theta at reference point",                     TrackElement_theta_);
     MakeField(model, "TrackElement_phi",              "Q(LTE+7): phi at reference point",                       TrackElement_phi_);
     MakeField(model, "TrackElement_invPOrPt",         "Q(LTE+8): 1/P or 1/Pt at reference point",               TrackElement_invPOrPt_);
+    MakeField(model, "TrackElement_covTail",
+        "Raw 21 floats from Q(LTE+9..LTE+29): the covariance matrix tail "
+        "of the track-element bank. The first N*(N+1)/2 words are the "
+        "lower-triangular error matrix of the measured sub-set of "
+        "(coord1, coord2, coord3, theta, phi, 1/P), where "
+        "N = popcount(dataDescriptor & measurement-bits). Words past "
+        "N*(N+1)/2 are PXDST-251+ footer (nDoF, chi2, length). Decode "
+        "per shortdst.des. Use these to do a hit-aware vertex fit "
+        "(per-detector 3D point with proper covariance, not just perigee).",
+        TrackElement_covTail_);
+    MakeField(model, "TrackElement_covTailLength",
+        "Number of valid words in TrackElement_covTail (= N*(N+1)/2 for "
+        "the covariance, plus 0-3 footer words; rest are zero).",
+        TrackElement_covTailLength_);
 }
 
 namespace {
@@ -670,6 +880,8 @@ void RawNanoAODWriter::fillTrackElement()
     TrackElement_theta_->clear();
     TrackElement_phi_->clear();
     TrackElement_invPOrPt_->clear();
+    TrackElement_covTail_->clear();
+    TrackElement_covTailLength_->clear();
 
     if (ph::LDTOP <= 0 || TracRaw_paIdx_->empty()) { *nTrackElement_ = 0; return; }
 
@@ -694,16 +906,38 @@ void RawNanoAODWriter::fillTrackElement()
                 int lte = ph::LPHPA(probe.name, lpa, 0);
                 if (lte == 0) continue;
 
+                const std::int32_t dd = static_cast<std::int32_t>(
+                    std::lround(ph::Q(lte + 2)));
+
                 TrackElement_tracRawIdx_->push_back(thisTracRawIdx);
                 TrackElement_subDetector_->push_back(probe.code);
-                TrackElement_dataDescriptor_->push_back(
-                    static_cast<std::int32_t>(std::lround(ph::Q(lte + 2))));
+                TrackElement_dataDescriptor_->push_back(dd);
                 TrackElement_coord1_->push_back(ph::Q(lte + 3));
                 TrackElement_coord2_->push_back(ph::Q(lte + 4));
                 TrackElement_coord3_->push_back(ph::Q(lte + 5));
                 TrackElement_theta_->push_back(ph::Q(lte + 6));
                 TrackElement_phi_->push_back(ph::Q(lte + 7));
                 TrackElement_invPOrPt_->push_back(ph::Q(lte + 8));
+
+                // Per shortdst.des PA.TE{TP,ID,OD,FA,FB}: after the eight
+                // header words come n*(n+1)/2 lower-triangular error-matrix
+                // words, where n is the popcount of bits 6..12 (1-based) of
+                // the data descriptor (the "measurement code": t1, t2, theta,
+                // phi, 1/P, 1/Pt, E). For PXDST >= 251 a 3-word footer (nDoF,
+                // chi2, length) follows.
+                const int meas_bits = (dd >> 5) & 0x7F;
+                const int n = __builtin_popcount(meas_bits);
+                const int n_cov = n * (n + 1) / 2;
+                constexpr int kFooter = 3;
+                constexpr int kMaxTail = 21;
+                const int n_total = std::min(n_cov + kFooter, kMaxTail);
+
+                std::array<float, kMaxTail> tail{};
+                for (int k = 0; k < n_total; ++k)
+                    tail[k] = ph::Q(lte + 9 + k);
+                TrackElement_covTail_->push_back(tail);
+                TrackElement_covTailLength_->push_back(
+                    static_cast<std::int8_t>(n_total));
             }
         }
     }
@@ -1050,11 +1284,30 @@ void RawNanoAODWriter::fillGenPart()
     GenPart_productionTime_->clear();
     GenPart_properLifetime_->clear();
 
-    // PSHMC/PSHLUJ/PSFLUJ return early on real data without touching NP, so
-    // we zero it manually and re-check afterwards -- NP > 0 after the call
-    // means the simulation structure was present and fully unpacked.
+    // Replicate the gate PSHMC uses to route between shortDST- and fullDST-
+    // simulation unpackers (skelana.car PSHMC L5193), and call the chosen
+    // LUJETS filler directly -- skipping PSHSIM / PSFSIM, which expect
+    // sim-track banks we don't need (and, for shortDST produced from Z->bb,
+    // don't even have, leading to a fault inside PSFSIM). Supersedes the
+    // bare pshmc_() call from PR #5: PSHMC drags PSHSIM/PSFSIM along, which
+    // segfault on Z->bb shortDST. PSHLUJ/PSFLUJ also return cleanly with
+    // NP=0 on real data, so the same NP>0 check is the isMC indicator.
     sk::NP = 0;
-    pshmc_();
+    if (ph::LDTOP > 0)
+    {
+        const bool shortSim = (ph::IQ(ph::LDTOP - 2) > 28)
+                            && (ph::LQ(ph::LDTOP - 28) != 0)
+                            && (ph::LQ(ph::LDTOP - 29) != 0);
+        const bool fullSim  = (ph::LQ(ph::LDTOP -  3) != 0);
+        if (shortSim)
+        {
+            pshluj_();
+        }
+        else if (fullSim)
+        {
+            psfluj_();
+        }
+    }
 
     const int np = sk::NP;
     *nGenPart_ = np;
