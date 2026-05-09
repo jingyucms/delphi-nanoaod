@@ -18,12 +18,13 @@ namespace sk = skelana;
 // the shortDST simulation structure (LQ(LDTOP-28)/(LDTOP-29)); PSFLUJ handles
 // the fullDST structure (walks the SH chain rooted at LQ(LDTOP-3)).
 //
-// We deliberately do NOT call SKELANA's PSHMC wrapper because it also calls
-// PSHSIM / PSFSIM to fill the sim-track collection, and PSFSIM crashes if
-// the expected sim-track banks aren't present (seen on Z->bb shortDST: the
-// shortDST-sim gate fails, PSHMC falls through to PSFSIM which then faults).
-// Routing directly to PSHLUJ / PSFLUJ based on bank presence gives us the
-// LUJETS truth we want without dragging in the sim-track machinery.
+// We deliberately do NOT call SKELANA's PSHMC wrapper (which dev-fullDST's
+// PR #5 used) because PSHMC also invokes PSHSIM / PSFSIM to fill the
+// sim-track collection, and PSFSIM crashes if the expected sim-track banks
+// aren't present (seen on Z->bb shortDST: the shortDST-sim gate inside
+// PSHMC fails, PSHMC falls through to PSFSIM which then faults). Routing
+// directly to PSHLUJ / PSFLUJ based on bank presence gives us the LUJETS
+// truth we want without dragging in the sim-track machinery.
 extern "C" void pshluj_();
 extern "C" void psfluj_();
 
@@ -1287,7 +1288,10 @@ void RawNanoAODWriter::fillGenPart()
     // simulation unpackers (skelana.car PSHMC L5193), and call the chosen
     // LUJETS filler directly -- skipping PSHSIM / PSFSIM, which expect
     // sim-track banks we don't need (and, for shortDST produced from Z->bb,
-    // don't even have, leading to a fault inside PSFSIM).
+    // don't even have, leading to a fault inside PSFSIM). Supersedes the
+    // bare pshmc_() call from PR #5: PSHMC drags PSHSIM/PSFSIM along, which
+    // segfault on Z->bb shortDST. PSHLUJ/PSFLUJ also return cleanly with
+    // NP=0 on real data, so the same NP>0 check is the isMC indicator.
     sk::NP = 0;
     if (ph::LDTOP > 0)
     {
