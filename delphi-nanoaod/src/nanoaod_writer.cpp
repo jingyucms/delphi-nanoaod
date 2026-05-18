@@ -946,7 +946,7 @@ void NanoAODWriter::fillGenPart()
                { return sk::ISHST(i) - 1; });
 
     fillVector(GenPart_mass_, 1, sk::NP, [](int i)
-    { return sk::PP(i, 5) - 1; });
+    { return sk::PP(i, 5); });
 
 }
 
